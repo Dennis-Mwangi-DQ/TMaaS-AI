@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Browz Concierge Chat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">B</div>
+        <div>
+          <h1>Browz Concierge</h1>
+          <p>Beauty booking assistant</p>
+        </div>
+      </div>
+
+      <div class="sidebar-card">
+        <span class="eyebrow">Status</span>
+        <strong id="connectionStatus">Ready to chat</strong>
+        <p id="connectionHint">Ask about bookings, availability, consultations, or payment links.</p>
+      </div>
+
+      <div class="sidebar-card wait-card" id="waitCard" hidden>
+        <span class="eyebrow">Waiting on Ollama</span>
+        <strong id="loadingTimer">00:00</strong>
+        <p>Responses can take 1 to 3 minutes. You can keep this page open while the model works.</p>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <header class="chat-header">
+        <div>
+          <span class="eyebrow">Live Assistant</span>
+          <h2>Chat with Browz</h2>
+        </div>
+        <button id="resetButton" class="secondary-button" type="button">New chat</button>
+      </header>
+
+      <section class="chat-window" id="chatWindow" aria-live="polite"></section>
+
+      <div id="errorBanner" class="error-banner" hidden></div>
+      <div id="quickReplies" class="quick-replies"></div>
+
+      <form class="composer" id="chatForm">
+        <label class="composer-field" for="messageInput">
+          <textarea
+            id="messageInput"
+            rows="1"
+            placeholder="Ask about a treatment, time slot, consultation, or payment link..."
+            autocomplete="off"
+          ></textarea>
+        </label>
+        <div class="composer-actions">
+          <span id="composerStatus" class="composer-status">Press Enter to send</span>
+          <button id="sendButton" class="send-button" type="submit">Send</button>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

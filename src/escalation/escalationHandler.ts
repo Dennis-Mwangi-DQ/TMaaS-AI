@@ -1,0 +1,32 @@
+import { getEnv } from '../lib/env';
+import { supabase } from '../db/supabaseClient';
+
+export async function escalate(params: {
+  sessionId: string;
+  reason: 'low_confidence' | 'user_requested' | 'tool_failure' | 'out_of_scope' | 'payment_failure';
+  channel: 'web' | 'whatsapp';
+  lastMessage: string;
+}): Promise<void> {
+  const webhookUrl = getEnv('ESCALATION_WEBHOOK_URL');
+
+  try {
+    if (webhookUrl) {
+      await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+    } else {
+      console.log('[escalation-mock]', params);
+    }
+  } catch (error) {
+    console.error('Escalation webhook failed', error);
+  }
+
+  if (supabase) {
+    await supabase
+      .from('sessions')
+      .update({ status: 'escalated', updated_at: new Date().toISOString() })
+      .eq('id', params.sessionId);
+  }
+}
