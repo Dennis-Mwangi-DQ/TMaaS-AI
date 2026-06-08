@@ -4,7 +4,11 @@ import {
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
-import { formatContextForPrompt, getContextSnapshot, learnFromToolCalls } from './agent-session';
+import {
+  formatContextForPrompt,
+  getContextSnapshot,
+  learnFromToolCalls,
+} from './agent-session';
 import { createSessionTools } from './tools';
 import { getEnv } from '../lib/env';
 import { createAgentLlm, isAgentLlmEnabled } from '../lib/llmClient';
@@ -25,7 +29,8 @@ Your job is to help users book appointments, check availability, and answer salo
 7. If gates block a booking, explain the next step (consultation, patch test, or medical screening).
 8. Never invent or guess dates. Only pass dates the user stated or relative terms you converted using the date context below.
 9. If the user did not specify a date for availability or booking, ask them before calling search_availability or create_booking.
-10. Provide concise, helpful answers using the data returned from tools only.`;
+10. For visitors (not authenticated clients), collect full name and contact number before create_booking and pass them as visitorName and visitorContact.
+11. Provide concise, helpful answers using the data returned from tools only.`;
 
 function buildDateContext(): string {
   const today = startOfTodayUtc();
@@ -104,6 +109,9 @@ export async function runAgent(params: {
   channel: 'web' | 'whatsapp';
   authToken?: string;
   whatsappNumber?: string;
+  clientId?: string;
+  visitorName?: string;
+  visitorContact?: string;
 }): Promise<{
   response: string;
   sessionId: string;
@@ -121,16 +129,26 @@ export async function runAgent(params: {
   }
 
   const identity = await resolveUserIdentity(params.authToken, params.whatsappNumber);
+  const resolvedClientId = params.clientId ?? identity.clientId;
   const session = await getOrCreateSession(
     params.sessionId,
     params.channel,
-    identity.clientId,
+    resolvedClientId,
     params.whatsappNumber ?? null,
   );
+  const priorContext = getContextSnapshot(session);
+  const nextContext = {
+    ...priorContext,
+    ...(params.visitorName?.trim() ? { visitorName: params.visitorName.trim() } : {}),
+    ...(params.visitorContact?.trim()
+      ? { visitorContact: params.visitorContact.trim() }
+      : {}),
+  };
   const enrichedSession = await updateSession(session.sessionId, {
-    clientId: identity.clientId,
-    userTier: identity.userTier,
+    clientId: resolvedClientId,
+    userTier: resolvedClientId ? 'client' : identity.userTier,
     whatsappNumber: params.whatsappNumber ?? session.whatsappNumber,
+    agentContext: nextContext,
   });
 
   const activeSession = enrichedSession ?? session;

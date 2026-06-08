@@ -20,6 +20,9 @@ async function handleChat(req: Request, res: Response) {
       sessionId: parsed.data.sessionId ?? generateSessionId(),
       channel: 'web',
       authToken: parsed.data.authToken,
+      clientId: parsed.data.clientId,
+      visitorName: parsed.data.visitorName,
+      visitorContact: parsed.data.visitorContact,
     });
 
     return res.json(result);

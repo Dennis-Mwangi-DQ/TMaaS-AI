@@ -7,6 +7,7 @@ import { createConsultation } from '../tools/consultations';
 import { getClearanceStatus } from '../tools/clearances';
 import { addNotes } from '../tools/notes';
 import { generatePaymentLink } from '../tools/payment';
+import { getContextSnapshot } from './agent-session';
 import { lookupFaq } from '../tools/faq';
 import { listServices } from '../tools/services';
 import { submitScreening } from '../tools/screenings';
@@ -100,12 +101,32 @@ async function executeToolImpl(
         return { success: false, error: 'no_slots_available' };
       }
 
+      const snapshot = getContextSnapshot(session);
+      const visitorName =
+        (typeof safeArgs.visitorName === 'string' && safeArgs.visitorName.trim()) ||
+        snapshot.visitorName;
+      const visitorContact =
+        (typeof safeArgs.visitorContact === 'string' && safeArgs.visitorContact.trim()) ||
+        session.whatsappNumber ||
+        snapshot.visitorContact;
+
+      if (!session.clientId && (!visitorName || !visitorContact)) {
+        return {
+          success: false,
+          error: 'visitor_details_required',
+          message:
+            'Please collect the visitor full name and contact number before creating the booking.',
+        };
+      }
+
       const booking = await createBooking({
         clientId: session.clientId,
-        visitorContact: session.whatsappNumber ?? undefined,
+        visitorName: session.clientId ? undefined : visitorName,
+        visitorContact: session.clientId ? undefined : visitorContact,
         serviceId: service.id,
         branchId: branch.id,
         slotId: matchingSlot.id,
+        artistId: matchingSlot.artistId ?? undefined,
         notes: String(safeArgs.notes ?? ''),
         channel: session.channel,
         bookingType: String(safeArgs.bookingType ?? 'single') as
@@ -118,11 +139,13 @@ async function executeToolImpl(
         return { success: false, error: booking.error ?? 'booking_failed' };
       }
 
+      const { bookingId, paymentRule } = booking.data;
+
       return {
         success: true,
         data: {
-          bookingId: booking.data.bookingId,
-          paymentRule: booking.data.paymentRule,
+          bookingId,
+          paymentRule,
           service: service.name,
           branch: branch.name,
           slotStart: matchingSlot.startTime,
@@ -342,6 +365,8 @@ export function createSessionTools(session: SessionContext) {
     time,
     notes,
     bookingType,
+    visitorName,
+    visitorContact,
   }: {
     service: string;
     branch?: string;
@@ -349,10 +374,12 @@ export function createSessionTools(session: SessionContext) {
     time?: string;
     notes?: string;
     bookingType?: string;
+    visitorName?: string;
+    visitorContact?: string;
   }) =>
     executeToolImpl(
       'create_booking',
-      { service, branch, date, time, notes, bookingType },
+      { service, branch, date, time, notes, bookingType, visitorName, visitorContact },
       session,
     );
 
@@ -455,13 +482,18 @@ export function createSessionTools(session: SessionContext) {
   const createBookingTool = tool(createBookingImpl, {
     name: 'create_booking',
     description:
-      'Create a new booking for a service, branch, date, and time. If payment is required, return the payment details as part of the result.',
+      'Create a new booking for a service, branch, date, and time. For visitors, pass visitorName and visitorContact. Payment link is generated automatically when required.',
     schema: z.object({
       service: z.string().describe('Treatment name'),
       branch: z.string().optional().describe('Branch or city name'),
       date: z.string().optional().describe('ISO date YYYY-MM-DD'),
       time: z.string().optional().describe('Preferred time HH:MM 24h'),
       notes: z.string().optional().describe('Booking notes or preferences'),
+      visitorName: z.string().optional().describe('Visitor full name (required for non-authenticated users)'),
+      visitorContact: z
+        .string()
+        .optional()
+        .describe('Visitor phone or email (required for non-authenticated users)'),
       bookingType: z
         .string()
         .optional()

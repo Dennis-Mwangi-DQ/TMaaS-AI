@@ -71,6 +71,8 @@ export const AgentContextSnapshotSchema = z.object({
   lastService: z.string().optional(),
   lastBranch: z.string().optional(),
   lastBookingRef: z.string().optional(),
+  visitorName: z.string().optional(),
+  visitorContact: z.string().optional(),
   recentTopics: z.array(z.string()).optional(),
 });
 export type AgentContextSnapshot = z.infer<typeof AgentContextSnapshotSchema>;
@@ -197,6 +199,9 @@ export const ChatRequest = z.object({
   message: z.string().min(1),
   sessionId: z.string().uuid().optional(),
   authToken: z.string().optional(),
+  clientId: z.string().uuid().optional(),
+  visitorName: z.string().optional(),
+  visitorContact: z.string().optional(),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
 

@@ -43,9 +43,22 @@ async function nextBookingSequence(): Promise<number> {
   }
 
   const prefix = `BRZ-${yearPart()}-`;
-  const { data } = await supabase.from('bookings').select('id').like('id', `${prefix}%`).order('id', { ascending: false }).limit(1);
-  const last = data?.[0]?.id ? String(data[0].id).split('-').pop() : null;
-  return (last ? Number(last) : 0) + 1;
+  const { data } = await supabase
+    .from('bookings')
+    .select('id')
+    .like('id', `${prefix}%`)
+    .order('id', { ascending: false })
+    .limit(50);
+
+  let maxSequence = 0;
+  for (const row of data ?? []) {
+    const suffix = String(row.id).slice(prefix.length);
+    if (/^\d+$/.test(suffix)) {
+      maxSequence = Math.max(maxSequence, Number(suffix));
+    }
+  }
+
+  return maxSequence + 1;
 }
 
 async function fetchSlot(slotId: string): Promise<TimeSlot | null> {
@@ -105,6 +118,13 @@ export async function createBooking(params: {
     const slot = await fetchSlot(params.slotId);
     if (!slot || slot.status !== 'available') {
       return fail('slot_unavailable');
+    }
+
+    if (
+      !params.clientId &&
+      (!params.visitorName?.trim() || !params.visitorContact?.trim())
+    ) {
+      return fail('visitor_details_required');
     }
 
     const bookingId = generateSequenceId('BRZ', yearPart(), await nextBookingSequence(), 5);

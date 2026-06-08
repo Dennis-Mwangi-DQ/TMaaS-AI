@@ -31,6 +31,12 @@ export function learnFromToolCalls(
     if (typeof args.bookingReference === 'string') {
       next.lastBookingRef = args.bookingReference;
     }
+    if (typeof args.visitorName === 'string' && args.visitorName.trim()) {
+      next.visitorName = args.visitorName.trim();
+    }
+    if (typeof args.visitorContact === 'string' && args.visitorContact.trim()) {
+      next.visitorContact = args.visitorContact.trim();
+    }
     if (tc.name === 'create_booking' || tc.name === 'modify_booking') {
       topics.push('bookings');
     }
@@ -59,6 +65,12 @@ export function formatContextForPrompt(
   }
   if (snapshot.lastBookingRef) {
     lines.push(`Booking reference in focus: ${snapshot.lastBookingRef}`);
+  }
+  if (snapshot.visitorName) {
+    lines.push(`Visitor name: ${snapshot.visitorName}`);
+  }
+  if (snapshot.visitorContact) {
+    lines.push(`Visitor contact: ${snapshot.visitorContact}`);
   }
   if (snapshot.recentTopics?.length) {
     lines.push(`Recent topics: ${snapshot.recentTopics.join(', ')}`);
