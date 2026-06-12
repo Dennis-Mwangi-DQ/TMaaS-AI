@@ -22,7 +22,7 @@ function contactCandidates(contact?: string | null): string[] {
   }
   const trimmed = contact.trim();
   const normalized = normalizePhoneNumber(trimmed);
-  return [...new Set([trimmed, normalized].filter(Boolean))];
+  return [...new Set([trimmed, normalized].filter((value): value is string => Boolean(value)))];
 }
 
 function evaluateMedicalScreening(data: MedicalScreeningRow | null): GateCheckResult {
