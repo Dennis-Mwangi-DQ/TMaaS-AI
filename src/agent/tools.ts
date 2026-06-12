@@ -6,7 +6,7 @@ import {
   type GateCheckContext,
 } from './gateChecker';
 import { createBooking, modifyBooking, cancelBooking } from '../tools/bookings';
-import { queryAvailability } from '../tools/availability';
+import { queryAvailability, queryNextAvailableDates } from '../tools/availability';
 import { createConsultation } from '../tools/consultations';
 import { getClearanceStatus } from '../tools/clearances';
 import { addNotes } from '../tools/notes';
@@ -100,10 +100,32 @@ async function executeToolImpl(
         date: resolvedDate.date,
         artistId: artist?.id ?? undefined,
       });
+
+      const slots = availability.data ?? [];
+
+      // When the requested day has no slots, scan ahead so the agent can present
+      // next available dates without looping day by day.
+      if (availability.success && slots.length === 0) {
+        const nextDates = await queryNextAvailableDates({
+          serviceId: service.id,
+          branchId: branch.id,
+          fromDate: resolvedDate.date,
+          artistId: artist?.id ?? undefined,
+        });
+        return {
+          success: true,
+          data: {
+            slots: [],
+            artistResolved: artist ? { id: artist.id, name: artist.name } : null,
+            nextAvailableDates: nextDates.length > 0 ? nextDates : null,
+          },
+        };
+      }
+
       return {
         success: availability.success,
         data: availability.data ? {
-          slots: availability.data,
+          slots,
           artistResolved: artist ? { id: artist.id, name: artist.name } : null,
         } : undefined,
         error: availability.error,
@@ -354,6 +376,20 @@ async function executeToolImpl(
       if (!resolvedDate.ok) {
         return { success: false, error: resolvedDate.error };
       }
+
+      // Require visitor details for unauthenticated sessions
+      const consultSnapshot = getContextSnapshot(session);
+      const consultVisitorName =
+        (typeof safeArgs.visitorName === 'string' && safeArgs.visitorName.trim()) ||
+        consultSnapshot.visitorName;
+      const consultVisitorContact =
+        (typeof safeArgs.visitorContact === 'string' && safeArgs.visitorContact.trim()) ||
+        session.whatsappNumber ||
+        consultSnapshot.visitorContact;
+      if (!session.clientId && (!consultVisitorName || !consultVisitorContact)) {
+        return { success: false, error: 'visitor_details_required' };
+      }
+
       const availability = await queryAvailability({
         serviceId: service.id,
         branchId: branch.id,
@@ -368,12 +404,19 @@ async function executeToolImpl(
       }
       const result = await createConsultation({
         clientId: session.clientId,
-        visitorContact: session.whatsappNumber ?? undefined,
+        visitorName: consultVisitorName ?? undefined,
+        visitorContact: consultVisitorContact ?? undefined,
         serviceId: service.id,
         serviceCategory: service.gateCategory,
         branchId: branch.id,
         slotId: slot.id,
       });
+      if (result.success) {
+        await persistAgentContext(session, {
+          ...(consultVisitorName ? { visitorName: consultVisitorName } : {}),
+          ...(consultVisitorContact ? { visitorContact: consultVisitorContact } : {}),
+        });
+      }
       return { success: result.success, data: result.data, error: result.error };
     }
     case 'check_clearance_status': {
@@ -411,13 +454,24 @@ async function executeToolImpl(
       if (!answers) {
         return { success: false, error: 'answers_required' };
       }
-      const snapshot = getContextSnapshot(session);
+      const screeningSnapshot = getContextSnapshot(session);
+      const visitorName =
+        (typeof safeArgs.visitorName === 'string' && safeArgs.visitorName.trim()) ||
+        screeningSnapshot.visitorName;
       const visitorContact =
-        snapshot.visitorContact ?? session.whatsappNumber ?? undefined;
-      const visitorName = snapshot.visitorName;
+        (typeof safeArgs.visitorContact === 'string' && safeArgs.visitorContact.trim()) ||
+        screeningSnapshot.visitorContact ||
+        session.whatsappNumber ||
+        undefined;
+
+      // Require identity for unauthenticated sessions — screening must be linkable
+      if (!session.clientId && (!visitorName || !visitorContact)) {
+        return { success: false, error: 'visitor_details_required' };
+      }
+
       const result = await submitScreening({
         clientId: session.clientId,
-        visitorName,
+        visitorName: visitorName ?? undefined,
         visitorContact,
         serviceCategory: service.gateCategory,
         answers: answers as ScreeningAnswers,
@@ -565,11 +619,15 @@ export function createSessionTools(session: SessionContext) {
     service,
     branch,
     date,
+    visitorName,
+    visitorContact,
   }: {
     service: string;
     branch?: string;
     date?: string;
-  }) => executeToolImpl('book_consultation', { service, branch, date }, session);
+    visitorName?: string;
+    visitorContact?: string;
+  }) => executeToolImpl('book_consultation', { service, branch, date, visitorName, visitorContact }, session);
 
   const checkClearanceStatusImpl = async ({ service }: { service: string }) =>
     executeToolImpl('check_clearance_status', { service }, session);
@@ -580,10 +638,14 @@ export function createSessionTools(session: SessionContext) {
   const submitScreeningImpl = async ({
     service,
     answers,
+    visitorName,
+    visitorContact,
   }: {
     service: string;
     answers: Record<string, unknown>;
-  }) => executeToolImpl('submit_screening', { service, answers }, session);
+    visitorName?: string;
+    visitorContact?: string;
+  }) => executeToolImpl('submit_screening', { service, answers, visitorName, visitorContact }, session);
 
   const checkPreBookingRequirementsImpl = async ({ service }: { service: string }) =>
     executeToolImpl('check_pre_booking_requirements', { service }, session);
@@ -717,11 +779,13 @@ export function createSessionTools(session: SessionContext) {
   const bookConsultationTool = tool(bookConsultationImpl, {
     name: 'book_consultation',
     description:
-      'Book a consultation slot for a service that requires consultation or patch testing.',
+      'Book a consultation slot for a service that requires consultation or patch testing. For unauthenticated users, visitorName and visitorContact are required.',
     schema: z.object({
       service: z.string().describe('Treatment name'),
       branch: z.string().optional().describe('Branch or city name'),
       date: z.string().optional().describe('ISO date YYYY-MM-DD'),
+      visitorName: z.string().optional().describe('Full name — required for non-signed-in users'),
+      visitorContact: z.string().optional().describe('Phone number — required for non-signed-in users'),
     }),
   });
 
@@ -745,9 +809,11 @@ export function createSessionTools(session: SessionContext) {
   const submitScreeningTool = tool(submitScreeningImpl, {
     name: 'submit_screening',
     description:
-      'Submit a completed medical screening questionnaire for a T3 service. Call this once you have collected all six answers from the user. All answer fields are required booleans.',
+      'Submit a completed medical screening questionnaire for a T3 service. Call this once you have collected all six answers from the user. All answer fields are required booleans. For unauthenticated users, visitorName and visitorContact are required.',
     schema: z.object({
       service: z.string().describe('Treatment name, e.g. Profhilo'),
+      visitorName: z.string().optional().describe('Full name — required for non-signed-in users'),
+      visitorContact: z.string().optional().describe('Phone number — required for non-signed-in users'),
       answers: z.object({
         q1Pregnant: z
           .boolean()

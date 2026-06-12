@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { salonDayBoundsUtc } from '../lib/dates';
+import { addDays, salonDayBoundsUtc, toIsoDate, SALON_TIMEZONE } from '../lib/dates';
 import { supabase } from '../db/supabaseClient';
 import { fail, ok } from '../lib/result';
 import type { TimeSlot, ToolResult } from '../types';
@@ -21,6 +21,16 @@ function mapSlot(row: Record<string, unknown>): TimeSlot {
     endTime: String(row.end_time),
     status: String(row.status ?? 'available') as TimeSlot['status'],
   };
+}
+
+/** Convert a UTC ISO instant to a salon-local YYYY-MM-DD string. */
+function toSalonLocalDate(isoTime: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: SALON_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(isoTime));
 }
 
 export async function queryAvailability(params: {
@@ -66,5 +76,60 @@ export async function queryAvailability(params: {
   } catch (error) {
     console.error('queryAvailability failed', error);
     return fail('availability_lookup_failed');
+  }
+}
+
+/**
+ * Scan the next `lookAheadDays` days (starting the day after `fromDate`) and
+ * return up to `maxDates` distinct salon-local dates that have available slots.
+ * Used by search_availability to give the agent a "next available" hint instead
+ * of letting it loop day by day.
+ */
+export async function queryNextAvailableDates(params: {
+  serviceId: string;
+  branchId: string;
+  fromDate: string;
+  artistId?: string;
+  lookAheadDays?: number;
+  maxDates?: number;
+}): Promise<string[]> {
+  if (!supabase) return [];
+
+  const lookAhead = params.lookAheadDays ?? 14;
+  const maxDates = params.maxDates ?? 3;
+
+  const startDate = new Date(`${params.fromDate}T00:00:00Z`);
+  const rangeStart = salonDayBoundsUtc(toIsoDate(addDays(startDate, 1))).startIso;
+  const rangeEnd = salonDayBoundsUtc(toIsoDate(addDays(startDate, lookAhead))).endIso;
+
+  try {
+    let query = supabase
+      .from('time_slots')
+      .select('start_time')
+      .eq('status', 'available')
+      .eq('service_id', params.serviceId)
+      .eq('branch_id', params.branchId)
+      .gte('start_time', rangeStart)
+      .lte('start_time', rangeEnd)
+      .order('start_time', { ascending: true })
+      .limit(lookAhead * 4);
+
+    if (params.artistId) {
+      query = query.eq('artist_id', params.artistId);
+    }
+
+    const { data } = await query;
+    if (!data?.length) return [];
+
+    const seen = new Set<string>();
+    for (const row of data) {
+      const localDate = toSalonLocalDate(String(row.start_time));
+      seen.add(localDate);
+      if (seen.size >= maxDates) break;
+    }
+
+    return [...seen];
+  } catch {
+    return [];
   }
 }
