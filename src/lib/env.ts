@@ -42,7 +42,7 @@ const envSchema = z.object({
     .string()
     .url()
     .default('https://api.deepseek.com'),
-  AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().default(5),
+  AGENT_MAX_TOOL_ITERATIONS: z.coerce.number().default(8),
   AGENT_MAX_TOKENS: z.coerce.number().default(2048),
   AGENT_TEMPERATURE: z.coerce.number().default(0.1),
   TAVILY_API_KEY: z.string().optional(),

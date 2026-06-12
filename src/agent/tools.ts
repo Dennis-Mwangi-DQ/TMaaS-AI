@@ -1,6 +1,10 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { checkPreBookingRequirements, checkTreatmentFrequency } from './gateChecker';
+import {
+  checkPreBookingRequirements,
+  checkTreatmentFrequency,
+  type GateCheckContext,
+} from './gateChecker';
 import { createBooking, modifyBooking, cancelBooking } from '../tools/bookings';
 import { queryAvailability } from '../tools/availability';
 import { createConsultation } from '../tools/consultations';
@@ -9,13 +13,37 @@ import { addNotes } from '../tools/notes';
 import { generatePaymentLink } from '../tools/payment';
 import { getContextSnapshot } from './agent-session';
 import { lookupFaq } from '../tools/faq';
-import { listServices, listBranchesForService, listArtistsForServiceAtBranch } from '../tools/services';
+import {
+  listServices,
+  listBranchesForService,
+  listArtistsForServiceAtBranch,
+  listServiceLocations,
+} from '../tools/services';
 import { submitScreening } from '../tools/screenings';
 import { findArtistByName, findBranchByName, findServiceByName, getDefaultBranch } from '../lib/catalog';
-import { resolveBookingDate } from '../lib/dates';
-import type { ScreeningAnswers, SessionContext } from '../types';
+import { isoToSalonLocalTime, resolveBookingDate, slotMatchesSalonLocalTime } from '../lib/dates';
+import { updateSession } from '../memory/sessionManager';
+import type { AgentContextSnapshot, ScreeningAnswers, SessionContext } from '../types';
 
 type ToolResultRecord = Record<string, unknown>;
+
+function buildGateContext(session: SessionContext): GateCheckContext {
+  const snapshot = getContextSnapshot(session);
+  return {
+    visitorContact: snapshot.visitorContact ?? session.whatsappNumber,
+    visitorName: snapshot.visitorName,
+    screeningRef: snapshot.lastScreeningRef,
+  };
+}
+
+async function persistAgentContext(session: SessionContext, patch: Partial<AgentContextSnapshot>) {
+  const nextContext: AgentContextSnapshot = {
+    ...getContextSnapshot(session),
+    ...patch,
+  };
+  session.agentContext = nextContext;
+  await updateSession(session.sessionId, { agentContext: nextContext });
+}
 
 function resolveServiceName(service?: string) {
   if (!service) {
@@ -87,7 +115,11 @@ async function executeToolImpl(
       if (!service) {
         return { success: false, error: 'service_not_found' };
       }
-      const gate = await checkPreBookingRequirements(service.id, session.clientId);
+      const gate = await checkPreBookingRequirements(
+        service.id,
+        session.clientId,
+        buildGateContext(session),
+      );
       if (!gate.gateCleared) {
         return { success: false, error: 'gate_blocked', reason: gate.reason };
       }
@@ -118,7 +150,9 @@ async function executeToolImpl(
           branchId: branch.id,
           date: resolvedDate.date,
         });
-        const nextSlots = (anyAvailability.data ?? []).slice(0, 3).map((s) => s.startTime.slice(11, 16));
+        const nextSlots = (anyAvailability.data ?? [])
+          .slice(0, 3)
+          .map((s) => isoToSalonLocalTime(s.startTime));
         return {
           success: false,
           error: 'artist_unavailable_at_requested_time',
@@ -135,12 +169,14 @@ async function executeToolImpl(
         availability.data.find((slot) => {
           const timeArg = safeArgs.time;
           if (!timeArg) return true;
-          return slot.startTime.slice(11, 16) === String(timeArg);
+          return slotMatchesSalonLocalTime(slot.startTime, String(timeArg));
         }) ?? null;
 
       // Requested time doesn't match — suggest alternatives
       if (!matchingSlot) {
-        const nextSlots = availability.data.slice(0, 3).map((s) => s.startTime.slice(11, 16));
+        const nextSlots = availability.data
+          .slice(0, 3)
+          .map((s) => isoToSalonLocalTime(s.startTime));
         return {
           success: false,
           error: 'requested_time_unavailable',
@@ -167,6 +203,7 @@ async function executeToolImpl(
         };
       }
 
+      const screeningRef = getContextSnapshot(session).lastScreeningRef;
       const booking = await createBooking({
         clientId: session.clientId,
         visitorName: session.clientId ? undefined : visitorName,
@@ -176,6 +213,7 @@ async function executeToolImpl(
         slotId: matchingSlot.id,
         artistId: matchingSlot.artistId ?? requestedArtist?.id ?? undefined,
         notes: String(safeArgs.notes ?? ''),
+        screeningRef,
         channel: session.channel,
         bookingType: String(safeArgs.bookingType ?? 'single') as
           | 'single'
@@ -235,7 +273,7 @@ async function executeToolImpl(
           if (!timeArg) {
             return true;
           }
-          return slot.startTime.slice(11, 16) === String(timeArg);
+          return slotMatchesSalonLocalTime(slot.startTime, String(timeArg));
         }) ?? availability.data[0];
       if (!matchingSlot) {
         return { success: false, error: 'no_slots_available' };
@@ -297,6 +335,10 @@ async function executeToolImpl(
     }
     case 'list_services': {
       const result = await listServices();
+      return { success: result.success, data: result.data, error: result.error };
+    }
+    case 'list_service_locations': {
+      const result = await listServiceLocations();
       return { success: result.success, data: result.data, error: result.error };
     }
     case 'book_consultation': {
@@ -369,12 +411,25 @@ async function executeToolImpl(
       if (!answers) {
         return { success: false, error: 'answers_required' };
       }
+      const snapshot = getContextSnapshot(session);
+      const visitorContact =
+        snapshot.visitorContact ?? session.whatsappNumber ?? undefined;
+      const visitorName = snapshot.visitorName;
       const result = await submitScreening({
         clientId: session.clientId,
-        visitorContact: session.whatsappNumber ?? undefined,
+        visitorName,
+        visitorContact,
         serviceCategory: service.gateCategory,
         answers: answers as ScreeningAnswers,
       });
+      if (result.success && result.data?.screeningId) {
+        await persistAgentContext(session, {
+          lastScreeningRef: result.data.screeningId,
+          lastService: service.name,
+          ...(visitorName ? { visitorName } : {}),
+          ...(visitorContact ? { visitorContact } : {}),
+        });
+      }
       return { success: result.success, data: result.data, error: result.error };
     }
     case 'check_pre_booking_requirements': {
@@ -382,7 +437,11 @@ async function executeToolImpl(
       if (!service) {
         return { success: false, error: 'service_not_found' };
       }
-      const result = await checkPreBookingRequirements(service.id, session.clientId);
+      const result = await checkPreBookingRequirements(
+        service.id,
+        session.clientId,
+        buildGateContext(session),
+      );
       return {
         success: result.gateCleared,
         data: result,
@@ -498,6 +557,9 @@ export function createSessionTools(session: SessionContext) {
     executeToolImpl('lookup_faq', { query }, session);
 
   const listServicesImpl = async () => executeToolImpl('list_services', {}, session);
+
+  const listServiceLocationsImpl = async () =>
+    executeToolImpl('list_service_locations', {}, session);
 
   const bookConsultationImpl = async ({
     service,
@@ -641,7 +703,14 @@ export function createSessionTools(session: SessionContext) {
   const listServicesTool = tool(listServicesImpl, {
     name: 'list_services',
     description:
-      'List all active treatments and services offered by the salon from the database.',
+      'List all active treatments and services offered by the salon from the database. Does not include branch locations — use list_service_locations when the user asks where services are offered.',
+    schema: z.object({}),
+  });
+
+  const listServiceLocationsTool = tool(listServiceLocationsImpl, {
+    name: 'list_service_locations',
+    description:
+      'Return every active service with the branches that offer it in a single call. Use this for catalog or location overview questions instead of calling list_branches_for_service repeatedly.',
     schema: z.object({}),
   });
 
@@ -676,12 +745,43 @@ export function createSessionTools(session: SessionContext) {
   const submitScreeningTool = tool(submitScreeningImpl, {
     name: 'submit_screening',
     description:
-      'Submit a medical screening questionnaire for T3 services and return whether questions were flagged.',
+      'Submit a completed medical screening questionnaire for a T3 service. Call this once you have collected all six answers from the user. All answer fields are required booleans.',
     schema: z.object({
-      service: z.string().describe('Treatment name'),
-      answers: z
-        .record(z.unknown())
-        .describe('Screening questionnaire answers keyed by question field'),
+      service: z.string().describe('Treatment name, e.g. Profhilo'),
+      answers: z.object({
+        q1Pregnant: z
+          .boolean()
+          .describe('Are you pregnant or breastfeeding? true = yes, false = no'),
+        q2BloodThinners: z
+          .boolean()
+          .describe(
+            'Are you currently taking any blood-thinning medication (e.g. Aspirin, Warfarin)? true = yes, false = no',
+          ),
+        q3Allergies: z
+          .boolean()
+          .describe(
+            'Do you have any known allergies, particularly to hyaluronic acid or injectable products? true = yes, false = no',
+          ),
+        q4PriorProcedures: z
+          .boolean()
+          .describe(
+            'Have you had any prior injectable procedures or facial treatments? true = yes, false = no',
+          ),
+        q4Detail: z
+          .string()
+          .optional()
+          .describe('If q4PriorProcedures is true, brief description of prior procedures'),
+        q5ActiveInfection: z
+          .boolean()
+          .describe(
+            'Do you have any active skin infections, cold sores, or inflammation in the treatment area? true = yes, false = no',
+          ),
+        q6Autoimmune: z
+          .boolean()
+          .describe(
+            'Do you have an autoimmune disease or are you on immunosuppressant medication? true = yes, false = no',
+          ),
+      }).describe('Medical screening answers — all boolean fields are required'),
     }),
   });
 
@@ -705,6 +805,7 @@ export function createSessionTools(session: SessionContext) {
     initiatePaymentTool,
     lookupFaqTool,
     listServicesTool,
+    listServiceLocationsTool,
     bookConsultationTool,
     checkClearanceStatusTool,
     checkFrequencyTool,
@@ -729,6 +830,7 @@ export function createSessionTools(session: SessionContext) {
       initiatePaymentImpl(args as Parameters<typeof initiatePaymentImpl>[0]),
     lookup_faq: (args) => lookupFaqImpl(args as Parameters<typeof lookupFaqImpl>[0]),
     list_services: () => listServicesImpl(),
+    list_service_locations: () => listServiceLocationsImpl(),
     book_consultation: (args) =>
       bookConsultationImpl(args as Parameters<typeof bookConsultationImpl>[0]),
     check_clearance_status: (args) =>

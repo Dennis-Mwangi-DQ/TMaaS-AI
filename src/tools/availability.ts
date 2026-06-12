@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { salonDayBoundsUtc } from '../lib/dates';
 import { supabase } from '../db/supabaseClient';
 import { fail, ok } from '../lib/result';
 import type { TimeSlot, ToolResult } from '../types';
@@ -38,14 +39,16 @@ export async function queryAvailability(params: {
   }
 
   try {
+    const { startIso, endIso } = salonDayBoundsUtc(params.date);
+
     let query = supabase
       .from('time_slots')
       .select('*')
       .eq('status', 'available')
       .eq('service_id', params.serviceId)
       .eq('branch_id', params.branchId)
-      .gte('start_time', `${params.date}T00:00:00.000Z`)
-      .lt('start_time', `${params.date}T23:59:59.999Z`)
+      .gte('start_time', startIso)
+      .lte('start_time', endIso)
       .order('start_time', { ascending: true })
       .limit(6);
 
