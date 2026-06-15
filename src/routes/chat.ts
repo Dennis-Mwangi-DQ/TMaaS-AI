@@ -1,35 +1,21 @@
-import { type Request, type Response, Router } from 'express';
+import { Router } from 'express';
 import { runAgent } from '../agent/agent';
 import { ChatRequest } from '../types';
-import { generateSessionId } from '../lib/ids';
 
-export const chatRouter = Router();
+const chatRouter = Router();
 
-async function handleChat(req: Request, res: Response) {
-  const parsed = ChatRequest.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({
-      error: 'Invalid request body',
-      details: parsed.error.flatten(),
-    });
-  }
-
+chatRouter.post('/', async (req, res) => {
   try {
-    const result = await runAgent({
-      message: parsed.data.message,
-      sessionId: parsed.data.sessionId ?? generateSessionId(),
-      channel: 'web',
-      authToken: parsed.data.authToken,
-      clientId: parsed.data.clientId,
-      visitorName: parsed.data.visitorName,
-      visitorContact: parsed.data.visitorContact,
-    });
-
-    return res.json(result);
+    const parsed = ChatRequest.parse(req.body);
+    const { response, assessmentComplete, result } = await runAgent(
+      parsed.message,
+      parsed.sessionId || 'default-session-id'
+    );
+    res.json({ response, assessmentComplete, result });
   } catch (error) {
-    console.error('POST /chat failed', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Chat error:', error);
+    res.status(400).json({ error: String(error) });
   }
-}
+});
 
-chatRouter.post('/', handleChat);
+export { chatRouter };

@@ -1,322 +1,216 @@
+import fs from 'fs';
+import path from 'path';
 import {
   AIMessage,
   HumanMessage,
   SystemMessage,
   ToolMessage,
+  type BaseMessage,
+  type MessageContent,
+  type ToolCall,
 } from '@langchain/core/messages';
-import {
-  formatContextForPrompt,
-  getContextSnapshot,
-  learnFromToolCalls,
-} from './agent-session';
-import { createSessionTools } from './tools';
 import { getEnv } from '../lib/env';
-import { createAgentLlm, isAgentLlmEnabled } from '../lib/llmClient';
-import { addDays, startOfTodayUtc, toIsoDate } from '../lib/dates';
-import { appendTurn, getOrCreateSession, resolveUserIdentity, updateSession } from '../memory/sessionManager';
-import type { SessionContext } from '../types';
+import { createAgentLlm } from '../lib/llmClient';
+import { appendTurn, getOrCreateSession } from '../memory/sessionManager';
+import { fetchEvidenceContext } from './agent-session';
+import { ALL_TOOLS } from './tools';
 
-const SYSTEM_PROMPT = `You are a Browz booking concierge assistant for a beauty salon in the UAE.
+type AgentRunResult = {
+  response: string;
+  assessmentComplete?: boolean;
+  result?: unknown;
+};
 
-Your job is to help users book appointments, check availability, and answer salon questions by calling the available tools to fetch real data. Follow these rules:
+type RunnableTool = {
+  name: string;
+  invoke(input: Record<string, unknown>): Promise<unknown>;
+};
 
-**Booking sequence — always follow this order:**
-1. When a user wants to book a service, call list_branches_for_service to show which branches offer it. Ask the user to pick one.
-2. Once a branch is chosen, call list_artists_for_service_at_branch to show the practitioners available at that branch. Ask the user to select one.
-3. Once an artist is chosen, ask the user for their preferred date and time. Then call search_availability with the service, branch, artist, and date to confirm the artist's availability.
-4. If the artist is available at the requested time, call create_booking with service, branch, artist, date, and time to confirm.
-5. If search_availability returns slots:[] with nextAvailableDates, tell the user the requested date has no availability and list those dates. Ask which they prefer. Do NOT call search_availability again for other dates — wait for the user to choose from the dates provided.
-6. If search_availability returns slots:[] with nextAvailableDates:null, tell the user the practitioner has no availability in the next 14 days and ask if they would like to try a different date, a different practitioner, or a different branch.
-7. NEVER call search_availability in a loop across multiple dates. One call per user request. If the result is empty, surface nextAvailableDates (if present) and wait for the user to respond.
+const toolByName = new Map<string, RunnableTool>(
+  ALL_TOOLS.map((tool) => [tool.name, tool as RunnableTool]),
+);
 
-**Medical screening flow (when check_pre_booking_requirements returns medical_screening_required):**
-- Do NOT stop the booking flow. Call search_availability first (or use the results you already have) so the slot is confirmed and ready.
-- Present the available slot(s) to the user, then immediately ask all six screening questions in one message:
-  1. Are you pregnant or breastfeeding?
-  2. Are you currently taking any blood-thinning medication (e.g. Aspirin, Warfarin)?
-  3. Do you have any known allergies, particularly to hyaluronic acid or injectable products?
-  4. Have you had any prior injectable procedures or facial treatments?
-  5. Do you have any active skin infections, cold sores, or inflammation in the treatment area?
-  6. Do you have an autoimmune disease or are you on immunosuppressant medication?
-- Once the user answers all questions, call submit_screening FIRST with the service name and the six boolean answer fields: q1Pregnant, q2BloodThinners, q3Allergies, q4PriorProcedures, q5ActiveInfection, q6Autoimmune. Map "yes" → true and "no" → false.
-- Only after submit_screening succeeds, call create_booking using the already-confirmed slot details. Never call create_booking before submit_screening when screening is required.
-- Do not call check_pre_booking_requirements or check_clearance_status after a successful submit_screening — the gate is cleared automatically when all answers are clear.
-- If any screening answer is flagged (true), explain the treatment team will review before confirming and do not call create_booking.
-
-**Reschedule / cancel — client_required error:**
-- modify_booking and cancel_booking require an authenticated client account. If either returns { "error": "client_required" }, STOP immediately. Do NOT call search_availability, check_pre_booking_requirements, or create_booking. Instead, tell the user: "To reschedule or cancel, please sign in to your Browz account and manage the booking from there, or contact us directly." Do not attempt any workaround.
-- NEVER use create_booking as a substitute for modify_booking. Creating a new booking to replace an existing one is a double-booking — it is strictly forbidden.
-
-**General rules:**
-6. ALWAYS call tools to get real booking, availability, and salon information — never make up services, prices, or policies.
-7. For questions about which services are offered, call list_services before answering. When the user asks where services are available, which branch offers what, or wants a service catalog with locations, call list_service_locations once — never call list_branches_for_service in a loop across multiple services.
-8. For pricing, location, hours, or policy, call lookup_faq.
-9. If the user names a treatment, pass the treatment name in tool args; tools resolve service IDs internally.
-10. Before create_booking for T2 or T3 services, call check_pre_booking_requirements first. If the gate is cleared, proceed to create_booking directly.
-11. For modify_booking, cancel_booking, or initiate_payment, require a bookingReference from the user.
-12. Format appointment times in Gulf Standard Time (UAE, UTC+4) using 12-hour clock (e.g. "8:00 AM"). After a successful booking, always show the booking reference prominently and tell the guest to save it — they will need the reference plus their name and contact to cancel or reschedule.
-13. If a gate requires consultation or patch test (not medical screening), explain the next step and offer to book a consultation.
-14. Never invent or guess dates. Only pass dates the user stated or relative terms you converted using the date context below.
-15. For visitors (not authenticated clients), collect full name and contact number before calling create_booking, book_consultation, or submit_screening. Pass them as visitorName and visitorContact in every one of those calls. Never call any of these three tools without identity when the user is not signed in.
-16. Provide concise, helpful answers using the data returned from tools only.
-17. If any tool returns an error you cannot resolve in one follow-up tool call, stop and tell the user what went wrong in plain language. Do not chain multiple tool calls trying to work around an error.
-
-**Response formatting rules:**
-17. Do not use emojis or decorative symbols in any response.
-18. Use clean Markdown that renders well in chat: short paragraphs, simple bullets, and simple tables only when they make comparison easier.
-19. Do not use icon-prefixed headings like "🚫 Medical Screening Required" or "⏰ Availability"; write plain headings like "Medical Screening Required" and "Availability".
-20. Avoid horizontal rules, oversized heading stacks, and dense tables for short lists. Prefer bullets for 2-6 options.
-21. End with one clear next step or question.`;
-
-function buildDateContext(): string {
-  const today = startOfTodayUtc();
-  return `## Date context
-Today: ${toIsoDate(today)}
-Tomorrow: ${toIsoDate(addDays(today, 1))}`;
-}
-
-function buildSystemContent(session: SessionContext): string {
-  const snapshot = getContextSnapshot(session);
-  const seeded: typeof snapshot = {
-    ...snapshot,
-    lastBookingRef: snapshot.lastBookingRef ?? session.lastBookingRef ?? undefined,
-  };
-  const sessionContext = formatContextForPrompt(seeded);
-
-  const dateContext = buildDateContext();
-
-  if (!sessionContext) {
-    return `${SYSTEM_PROMPT}\n\n${dateContext}`;
-  }
-
-  return `${SYSTEM_PROMPT}
-
-${dateContext}
-
-## Active session context
-${sessionContext}
-
-Use this context for follow-up questions (e.g. "this", "that slot", "book it") without asking the user to repeat themselves unless something is ambiguous.`;
-}
-
-function buildConversationMessages(
-  session: SessionContext,
-  userMessage: string,
-): Array<SystemMessage | HumanMessage | AIMessage | ToolMessage> {
-  const messages: Array<SystemMessage | HumanMessage | AIMessage | ToolMessage> = [
-    new SystemMessage(buildSystemContent(session)),
-  ];
-
-  for (const turn of session.conversationHistory.slice(-8)) {
-    messages.push(
-      turn.role === 'agent'
-        ? new AIMessage(turn.content)
-        : new HumanMessage(turn.content),
-    );
-  }
-
-  messages.push(new HumanMessage(userMessage));
-  return messages;
-}
-
-function extractResponseText(content: AIMessage['content']): string {
+function stringifyContent(content: MessageContent): string {
   if (typeof content === 'string') {
     return content;
   }
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => {
-        if (typeof part === 'string') {
-          return part;
-        }
-        if (part && typeof part === 'object' && 'text' in part) {
-          return String((part as { text?: string }).text ?? '');
-        }
-        return '';
-      })
-      .join('');
-  }
-  return JSON.stringify(content);
-}
 
-function sanitizeAssistantResponse(text: string): string {
-  return text
-    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]\u{FE0F}?/gu, '')
-    .replace(/\uFE0F/g, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-export async function runAgent(params: {
-  message: string;
-  sessionId?: string;
-  channel: 'web' | 'whatsapp';
-  authToken?: string;
-  whatsappNumber?: string;
-  clientId?: string;
-  visitorName?: string;
-  visitorContact?: string;
-}): Promise<{
-  response: string;
-  sessionId: string;
-  toolCalls: { name: string; args: Record<string, unknown> }[];
-  toolResults: { name: string; result: unknown }[];
-}> {
-  if (!isAgentLlmEnabled()) {
-    return {
-      response:
-        'LLM is not configured. Set LLM_PROVIDER and the required credentials for that provider, then try again.',
-      sessionId: params.sessionId ?? 'unknown',
-      toolCalls: [],
-      toolResults: [],
-    };
-  }
-
-  const identity = await resolveUserIdentity(params.authToken, params.whatsappNumber);
-  const resolvedClientId = params.clientId ?? identity.clientId;
-  const session = await getOrCreateSession(
-    params.sessionId,
-    params.channel,
-    resolvedClientId,
-    params.whatsappNumber ?? null,
-  );
-  const priorContext = getContextSnapshot(session);
-  const nextContext = {
-    ...priorContext,
-    ...(params.visitorName?.trim() ? { visitorName: params.visitorName.trim() } : {}),
-    ...(params.visitorContact?.trim()
-      ? { visitorContact: params.visitorContact.trim() }
-      : {}),
-  };
-  const enrichedSession = await updateSession(session.sessionId, {
-    clientId: resolvedClientId,
-    userTier: resolvedClientId ? 'client' : identity.userTier,
-    whatsappNumber: params.whatsappNumber ?? session.whatsappNumber,
-    agentContext: nextContext,
-  });
-
-  const activeSession = enrichedSession ?? session;
-  const { allTools, toolImplementations } = createSessionTools(activeSession);
-  const llm = createAgentLlm();
-  if (!llm.bindTools) {
-    throw new Error('Configured LLM does not support tool calling.');
-  }
-  const llmWithTools = llm.bindTools(allTools);
-  const messages = buildConversationMessages(activeSession, params.message);
-  const executedToolCalls: { name: string; args: Record<string, unknown> }[] = [];
-  const executedToolResults: { name: string; result: unknown }[] = [];
-  const maxIterations = getEnv().AGENT_MAX_TOOL_ITERATIONS;
-
-  for (let i = 0; i < maxIterations; i += 1) {
-    const response = await llmWithTools.invoke(messages);
-    messages.push(response);
-
-    const toolCalls = response.tool_calls;
-    if (!toolCalls || toolCalls.length === 0) {
-      const responseText = sanitizeAssistantResponse(extractResponseText(response.content));
-
-      await appendTurn(activeSession.sessionId, {
-        role: 'user',
-        content: params.message,
-        timestamp: new Date().toISOString(),
-      });
-      await appendTurn(activeSession.sessionId, {
-        role: 'agent',
-        content: responseText,
-        timestamp: new Date().toISOString(),
-      });
-
-      const nextSnapshot = learnFromToolCalls(
-        getContextSnapshot(activeSession),
-        executedToolCalls,
-      );
-      await updateSession(activeSession.sessionId, {
-        agentContext: nextSnapshot,
-        ...(nextSnapshot.lastBookingRef
-          ? { lastBookingRef: nextSnapshot.lastBookingRef }
-          : {}),
-      });
-
-      return {
-        response: responseText,
-        sessionId: activeSession.sessionId,
-        toolCalls: executedToolCalls,
-        toolResults: executedToolResults,
-      };
-    }
-
-    for (const tc of toolCalls) {
-      executedToolCalls.push({
-        name: tc.name,
-        args: tc.args as Record<string, unknown>,
-      });
-
-      try {
-        const impl = toolImplementations[tc.name];
-        if (!impl) {
-          const errResult = { error: `Unknown tool: ${tc.name}` };
-          executedToolResults.push({ name: tc.name, result: errResult });
-          messages.push(
-            new ToolMessage({
-              content: JSON.stringify(errResult),
-              tool_call_id: tc.id ?? '',
-            }),
-          );
-          continue;
-        }
-
-        const result = await impl(tc.args as Record<string, unknown>);
-        executedToolResults.push({ name: tc.name, result });
-        messages.push(
-          new ToolMessage({
-            content: typeof result === 'string' ? result : JSON.stringify(result),
-            tool_call_id: tc.id ?? '',
-          }),
-        );
-      } catch (err) {
-        const errResult = { error: err instanceof Error ? err.message : 'Unknown error' };
-        executedToolResults.push({ name: tc.name, result: errResult });
-        messages.push(
-          new ToolMessage({
-            content: JSON.stringify(errResult),
-            tool_call_id: tc.id ?? '',
-          }),
-        );
+  return content
+    .map((part) => {
+      if (typeof part === 'string') {
+        return part;
       }
+      if ('text' in part && typeof part.text === 'string') {
+        return part.text;
+      }
+      return JSON.stringify(part);
+    })
+    .join('');
+}
+
+function stringifyToolOutput(output: unknown): string {
+  if (typeof output === 'string') {
+    return output;
+  }
+  if (output instanceof ToolMessage) {
+    return stringifyContent(output.content);
+  }
+  return JSON.stringify(output);
+}
+
+function renderSystemPrompt(params: {
+  sessionId: string;
+  topicsCovered: string;
+  evidence: string;
+}): string {
+  const promptTpl = fs.readFileSync(
+    path.join(process.cwd(), 'prompts/system_prompt.md'),
+    'utf-8',
+  );
+
+  return promptTpl
+    .replace('{{TOPICS_COVERED}}', params.topicsCovered)
+    .replace('{{EVIDENCE}}', params.evidence)
+    .concat(`\n\nCurrent Session ID:\n${params.sessionId}`);
+}
+
+function parseAssessmentResult(text: string): unknown | undefined {
+  try {
+    const match = text.match(/\{"status":"assessment_completed".*\}/);
+    if (!match) {
+      return undefined;
+    }
+    const parsed = JSON.parse(match[0]) as { result?: unknown };
+    return parsed.result;
+  } catch {
+    return undefined;
+  }
+}
+
+async function executeToolCall(
+  toolCall: ToolCall,
+  sessionId: string,
+): Promise<ToolMessage> {
+  const tool = toolByName.get(toolCall.name);
+  const toolCallId = toolCall.id ?? `${toolCall.name}-${Date.now()}`;
+
+  if (!tool) {
+    return new ToolMessage({
+      content: `Tool not found: ${toolCall.name}`,
+      name: toolCall.name,
+      status: 'error',
+      tool_call_id: toolCallId,
+    });
+  }
+
+  try {
+    const args = {
+      ...(toolCall.args ?? {}),
+      sessionId,
+    };
+    const output = await tool.invoke(args);
+
+    return new ToolMessage({
+      content: stringifyToolOutput(output),
+      name: toolCall.name,
+      status: 'success',
+      tool_call_id: toolCallId,
+    });
+  } catch (error) {
+    return new ToolMessage({
+      content: error instanceof Error ? error.message : String(error),
+      name: toolCall.name,
+      status: 'error',
+      tool_call_id: toolCallId,
+    });
+  }
+}
+
+export async function runAgent(
+  message: string,
+  sessionId: string,
+): Promise<AgentRunResult> {
+  const session = await getOrCreateSession(sessionId);
+  const evidence = await fetchEvidenceContext(sessionId);
+
+  const history = session.conversationHistory.map<BaseMessage>((turn) =>
+    turn.role === 'user'
+      ? new HumanMessage(turn.content)
+      : new AIMessage(turn.content),
+  );
+
+  const topicsCovered = session.topicsCompleted.join(', ') || 'None';
+  const evidenceStr = JSON.stringify(
+    evidence.map((record) => ({
+      dimension: record.dimension,
+      meaning: record.agentInterpretation,
+    })),
+  );
+
+  const messages: BaseMessage[] = [
+    new SystemMessage(
+      renderSystemPrompt({
+        sessionId,
+        topicsCovered,
+        evidence: evidenceStr,
+      }),
+    ),
+    ...history,
+    new HumanMessage(message),
+  ];
+
+  const llm = createAgentLlm({ temperature: 0.1 }).bindTools(ALL_TOOLS);
+  const toolOutputs: string[] = [];
+  let response = '';
+
+  for (let step = 0; step < getEnv().AGENT_MAX_TOOL_ITERATIONS; step += 1) {
+    const aiMessage = (await llm.invoke(messages)) as AIMessage;
+    messages.push(aiMessage);
+
+    const toolCalls = aiMessage.tool_calls ?? [];
+    if (toolCalls.length === 0) {
+      response = stringifyContent(aiMessage.content);
+      break;
+    }
+
+    for (const toolCall of toolCalls) {
+      const toolMessage = await executeToolCall(toolCall, sessionId);
+      toolOutputs.push(stringifyContent(toolMessage.content));
+      messages.push(toolMessage);
     }
   }
 
-  const fallback =
-    "I've reached the maximum number of tool calls while trying to answer your question. Please try rephrasing or asking a more specific question.";
+  if (!response) {
+    const lastMessage = messages.at(-1);
+    response =
+      lastMessage instanceof AIMessage
+        ? stringifyContent(lastMessage.content)
+        : 'I need one more response to complete the assessment step.';
+  }
 
-  await appendTurn(activeSession.sessionId, {
+  await appendTurn(sessionId, {
     role: 'user',
-    content: params.message,
+    content: message,
     timestamp: new Date().toISOString(),
   });
-  await appendTurn(activeSession.sessionId, {
+  await appendTurn(sessionId, {
     role: 'agent',
-    content: fallback,
+    content: response,
     timestamp: new Date().toISOString(),
   });
 
-  const nextSnapshot = learnFromToolCalls(
-    getContextSnapshot(activeSession),
-    executedToolCalls,
-  );
-  await updateSession(activeSession.sessionId, {
-    agentContext: nextSnapshot,
-    ...(nextSnapshot.lastBookingRef
-      ? { lastBookingRef: nextSnapshot.lastBookingRef }
-      : {}),
-  });
+  const result =
+    parseAssessmentResult(response) ??
+    toolOutputs.map(parseAssessmentResult).find((value) => value !== undefined);
+  const assessmentComplete =
+    Boolean(result) ||
+    response.includes('assessment_completed') ||
+    toolOutputs.some((output) => output.includes('assessment_completed')) ||
+    session.status === 'completed';
 
   return {
-    response: fallback,
-    sessionId: activeSession.sessionId,
-    toolCalls: executedToolCalls,
-    toolResults: executedToolResults,
+    response,
+    assessmentComplete,
+    result,
   };
 }

@@ -1,0 +1,6 @@
+{
+  "Not Ready": "The organisation lacks the basic data, systems, or leadership foundations to support an AI initiative. Any AI project attempted at this stage will likely fail or become an isolated, unscalable proof-of-concept.",
+  "Foundation Needed": "The organisation has some digital capability but lacks the integration, data quality, or specific use-case focus required for reliable AI deployment. Foundational work is required before piloting.",
+  "Pilot Ready": "The organisation has strong foundations and is ready to deploy a scoped AI pilot. There may be minor gaps in specific dimensions, but the overall environment supports experimental deployment and measurement.",
+  "Scale Ready": "The organisation has mature data, integrated systems, strong leadership, and an agile delivery model. It is ready to deploy AI capabilities at scale across multiple business functions."
+}

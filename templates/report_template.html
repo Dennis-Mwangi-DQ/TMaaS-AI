@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TMaaS AI Readiness Advisory</title>
+  <style>
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; line-height: 1.5; margin: 0; padding: 20px; }
+    .header { border-bottom: 2px solid #D97706; padding-bottom: 10px; margin-bottom: 20px; }
+    .header h1 { margin: 0; color: #1F2937; }
+    .meta { color: #6B7280; font-size: 0.9em; margin-top: 5px; }
+    h2 { color: #D97706; margin-top: 30px; border-bottom: 1px solid #E5E7EB; padding-bottom: 5px; }
+    .level { font-size: 1.5em; font-weight: bold; padding: 10px; background: #FEF3C7; color: #92400E; display: inline-block; border-radius: 5px; }
+    .narrative { font-size: 1.1em; background: #F3F4F6; padding: 15px; border-left: 4px solid #4B5563; }
+    .blocker { margin-bottom: 15px; }
+    .blocker-title { font-weight: bold; color: #DC2626; }
+    .use-case { margin-bottom: 15px; padding: 10px; border: 1px solid #E5E7EB; border-radius: 5px; }
+    .use-case-name { font-weight: bold; color: #2563EB; }
+    .action { font-size: 1.2em; padding: 15px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 5px; margin-top: 20px; }
+    .footer { margin-top: 50px; font-size: 0.8em; color: #9CA3AF; text-align: center; border-top: 1px solid #E5E7EB; padding-top: 10px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>TMaaS AI Readiness Advisory</h1>
+    <div class="meta">
+      {{#if session.organisation}}Organization: {{session.organisation}}<br>{{/if}}
+      {{#if session.sector}}Sector: {{session.sector}}<br>{{/if}}
+      Date: {{session.createdAt}}
+    </div>
+  </div>
+
+  <div>
+    <h2>Readiness Level</h2>
+    <div class="level">{{result.readinessLevel}}</div>
+    <div class="narrative">{{result.narrative}}</div>
+  </div>
+
+  <div>
+    <h2>Critical Blockers</h2>
+    {{#each result.blockers}}
+    <div class="blocker">
+      <div class="blocker-title">{{this.title}}</div>
+      <div>{{this.description}}</div>
+    </div>
+    {{/each}}
+  </div>
+
+  <div>
+    <h2>Recommended First Action</h2>
+    <div class="action">{{result.firstAction}}</div>
+  </div>
+
+  <div>
+    <h2>Viable Use Cases for Your Sector</h2>
+    {{#each result.useCases}}
+    <div class="use-case">
+      <div class="use-case-name">{{this.useCase.name}}</div>
+      <div>{{this.rationale}}</div>
+      <div style="font-size: 0.9em; color: #6B7280; margin-top: 5px;">Complexity: {{this.useCase.implementation_complexity}} | Cost: {{this.useCase.cost_band_indicative}}</div>
+    </div>
+    {{/each}}
+  </div>
+
+  <div class="footer">
+    Powered by DQ TMaaS Agent A
+  </div>
+
+</body>
+</html>

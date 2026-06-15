@@ -1,229 +1,113 @@
 import { z } from 'zod';
 
-export const ServiceTier = z.enum(['T1', 'T2', 'T3']);
-export const UserTier = z.enum(['visitor', 'client']);
-export const Channel = z.enum(['web', 'whatsapp']);
-export const BookingStatus = z.enum(['confirmed', 'modified', 'cancelled', 'pending_payment', 'completed']);
-export const PaymentType = z.enum(['full_upfront', 'deposit', 'package', 'free']);
-export const ScreeningStatus = z.enum(['PENDING', 'APPROVED', 'FLAGGED', 'EXPIRED', 'DECLINED', 'NEEDS_INFO']);
+export const DimensionScore = z.union([z.literal(0), z.literal(1), z.literal(2)]);
+export type DimensionScore = z.infer<typeof DimensionScore>;
 
-export const IntentId = z.enum([
-  'check_availability',
-  'create_booking',
-  'modify_booking',
-  'cancel_booking',
-  'add_notes',
-  'initiate_payment',
-  'faq_general',
-  'escalate_human',
-  'greeting_smalltalk',
-  'book_consultation',
-  'check_clearance_status',
-  'check_frequency',
+export const EvidenceQuality = z.enum(['DOCUMENTED', 'INFERRED', 'STATED', 'ABSENT']);
+export type EvidenceQuality = z.infer<typeof EvidenceQuality>;
+
+export const ReadinessLevel = z.enum([
+  'Not Ready',
+  'Foundation Needed',
+  'Pilot Ready',
+  'Scale Ready',
 ]);
-export type IntentId = z.infer<typeof IntentId>;
+export type ReadinessLevel = z.infer<typeof ReadinessLevel>;
 
-export const ClassificationResult = z.object({
-  intent: IntentId,
-  entities: z.object({
-    service: z.string().optional(),
-    branch: z.string().optional(),
-    date: z.string().optional(),
-    time: z.string().optional(),
-    artistName: z.string().optional(),
-    bookingReference: z.string().optional(),
-    notes: z.string().optional(),
-    paymentRequested: z.boolean().optional(),
-  }),
-  confidence: z.number().min(0).max(1),
+export const DimensionNames = z.enum([
+  'data_accessibility',
+  'data_quality_history',
+  'systems_integration',
+  'use_case_specificity',
+  'implementation_capability',
+  'adoption_conditions',
+  'leadership_sponsorship',
+]);
+export type DimensionName = z.infer<typeof DimensionNames>;
+
+export const EvidenceRecordSchema = z.object({
+  dimension: DimensionNames,
+  quality: EvidenceQuality,
+  extractedText: z.string(),
+  agentInterpretation: z.string(),
+  source: z.enum(['DOCUMENT', 'CONVERSATION']),
+  documentName: z.string().optional(),
 });
-export type ClassificationResult = z.infer<typeof ClassificationResult>;
+export type EvidenceRecord = z.infer<typeof EvidenceRecordSchema>;
+
+export const DimensionScoresSchema = z.record(DimensionNames, DimensionScore);
+export type DimensionScores = z.infer<typeof DimensionScoresSchema>;
+
+export const EvidenceQualityMapSchema = z.record(DimensionNames, EvidenceQuality);
+export type EvidenceQualityMap = z.infer<typeof EvidenceQualityMapSchema>;
 
 export const ConversationTurn = z.object({
   role: z.enum(['user', 'agent']),
   content: z.string(),
-  intent: IntentId.optional(),
-  confidence: z.number().optional(),
   timestamp: z.string(),
 });
 export type ConversationTurn = z.infer<typeof ConversationTurn>;
 
-export const ScreeningAnswersSchema = z.object({
-  q1Pregnant: z.boolean(),
-  q2BloodThinners: z.boolean(),
-  q3Allergies: z.boolean(),
-  q4PriorProcedures: z.boolean(),
-  q4Detail: z.string().optional(),
-  q5ActiveInfection: z.boolean(),
-  q6Autoimmune: z.boolean(),
-});
-export type ScreeningAnswers = z.infer<typeof ScreeningAnswersSchema>;
-
-export const ScreeningStateSchema = z.object({
-  active: z.boolean(),
-  serviceCategory: z.string(),
-  currentQuestion: z.number().int().min(0).max(5),
-  answers: ScreeningAnswersSchema.partial(),
-});
-export type ScreeningState = z.infer<typeof ScreeningStateSchema>;
-
-export const AgentContextSnapshotSchema = z.object({
-  lastService: z.string().optional(),
-  lastBranch: z.string().optional(),
-  lastBookingRef: z.string().optional(),
-  lastScreeningRef: z.string().optional(),
-  visitorName: z.string().optional(),
-  visitorContact: z.string().optional(),
-  recentTopics: z.array(z.string()).optional(),
-});
-export type AgentContextSnapshot = z.infer<typeof AgentContextSnapshotSchema>;
-
-export const SessionContext = z.object({
+export const AssessmentSessionSchema = z.object({
   sessionId: z.string().uuid(),
-  channel: Channel,
-  userTier: UserTier,
-  clientId: z.string().uuid().nullable(),
-  whatsappNumber: z.string().nullable(),
-  conversationHistory: z.array(ConversationTurn),
-  lastIntent: IntentId.nullable(),
-  lastBookingRef: z.string().nullable(),
-  agentContext: AgentContextSnapshotSchema.optional(),
-  status: z.enum(['active', 'escalated', 'closed']),
-  screeningState: ScreeningStateSchema.optional(),
-  clarificationCount: z.number().int().min(0).default(0),
+  organisation: z.string().optional(),
+  sector: z.string().optional(),
+  respondentRole: z.string().optional(),
+  documentsUploaded: z.array(z.string()).default([]),
+  conversationHistory: z.array(ConversationTurn).default([]),
+  topicsCompleted: z.array(z.string()).default([]),
+  dimensionScores: DimensionScoresSchema.optional(),
+  evidenceQuality: EvidenceQualityMapSchema.optional(),
+  status: z.enum(['active', 'completed']).default('active'),
+  readinessLevel: ReadinessLevel.optional(),
+  pdfUrl: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
-export type SessionContext = z.infer<typeof SessionContext>;
+export type AssessmentSession = z.infer<typeof AssessmentSessionSchema>;
 
-export const GateCheckResult = z.discriminatedUnion('gateCleared', [
-  z.object({ gateCleared: z.literal(true) }),
-  z.object({
-    gateCleared: z.literal(false),
-    reason: z.enum([
-      'consultation_and_patch_test_required',
-      'screening_under_review',
-      'medical_screening_required',
-    ]),
-  }),
-]);
-export type GateCheckResult = z.infer<typeof GateCheckResult>;
+export const UseCaseEntrySchema = z.object({
+  use_case_id: z.string(),
+  name: z.string(),
+  sectors: z.array(z.string()),
+  min_readiness_level: ReadinessLevel,
+  description: z.string(),
+  value_statement: z.string(),
+  prerequisite: z.string(),
+  implementation_complexity: z.string(),
+  cost_band_indicative: z.string(),
+  dq_notes: z.string().optional(),
+});
+export type UseCaseEntry = z.infer<typeof UseCaseEntrySchema>;
 
-export const FrequencyCheckResult = z.discriminatedUnion('tooSoon', [
-  z.object({ tooSoon: z.literal(false) }),
-  z.object({
-    tooSoon: z.literal(true),
-    hardBlock: z.boolean(),
-    earliestDate: z.string(),
-    weeksRemaining: z.number(),
-  }),
-]);
-export type FrequencyCheckResult = z.infer<typeof FrequencyCheckResult>;
+export const BlockerSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+});
+export type Blocker = z.infer<typeof BlockerSchema>;
+
+export const AssessmentResultSchema = z.object({
+  readinessLevel: ReadinessLevel,
+  narrative: z.string(),
+  blockers: z.array(BlockerSchema),
+  useCases: z.array(
+    z.object({
+      useCase: UseCaseEntrySchema,
+      rationale: z.string(),
+    })
+  ),
+  firstAction: z.string(),
+});
+export type AssessmentResult = z.infer<typeof AssessmentResultSchema>;
+
+export const ChatRequest = z.object({
+  message: z.string().min(1),
+  sessionId: z.string().uuid().optional(),
+});
+export type ChatRequest = z.infer<typeof ChatRequest>;
 
 export interface ToolResult<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;
-}
-
-export interface Service {
-  id: string;
-  name: string;
-  category: string;
-  gateCategory: string;
-  serviceTier: 'T1' | 'T2' | 'T3';
-  city: string | null;
-  durationMinutes: number;
-  priceAed: number;
-  requiresConsultation: boolean;
-  requiresPatchTest: boolean;
-  requiresScreening: boolean;
-  isMedicalGated: boolean;
-  minFrequencyWeeks: number | null;
-  frequencyHardBlock: boolean;
-  description: string;
-}
-
-export interface Branch {
-  id: string;
-  name: string;
-  city: string;
-  address: string;
-  phone: string;
-  hours?: Record<string, string>;
-  categories?: string[];
-  status?: string;
-}
-
-export interface Artist {
-  id: string;
-  name: string;
-  role: string | null;
-  title: string | null;
-  branchId: string;
-  serviceIds: string[];
-}
-
-export interface TimeSlot {
-  id: string;
-  branchId: string;
-  serviceId: string;
-  artistId?: string | null;
-  startTime: string;
-  endTime: string;
-  status: 'available' | 'booked' | 'blocked';
-}
-
-export interface PaymentRule {
-  paymentType: 'full_upfront' | 'deposit' | 'package' | 'free';
-  depositAmountAed: number;
-  balanceDueAed: number;
-}
-
-export interface BookingRecord {
-  id: string;
-  clientId: string | null;
-  visitorName?: string;
-  visitorContact?: string;
-  serviceId: string;
-  branchId: string;
-  slotId: string;
-  artistId?: string | null;
-  status: string;
-  notes?: string;
-  bookingType: string;
-  paymentType: PaymentRule['paymentType'];
-  depositAmountAed: number;
-  balanceDueAed: number;
-  paymentStatus: string;
-  paymentLink?: string | null;
-  screeningRef?: string | null;
-  clearanceRef?: string | null;
-  consentStatus: string;
-  channel: z.infer<typeof Channel>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export const ChatRequest = z.object({
-  message: z.string().min(1),
-  sessionId: z.string().uuid().optional(),
-  authToken: z.string().optional(),
-  clientId: z.string().uuid().optional(),
-  visitorName: z.string().optional(),
-  visitorContact: z.string().optional(),
-});
-export type ChatRequest = z.infer<typeof ChatRequest>;
-
-export const WhatsAppWebhookBody = z.object({
-  Body: z.string(),
-  From: z.string(),
-  To: z.string(),
-  MessageSid: z.string(),
-});
-export type WhatsAppWebhookBody = z.infer<typeof WhatsAppWebhookBody>;
-
-export interface ServiceLookupResult {
-  service: Service | null;
-  branch: Branch | null;
 }

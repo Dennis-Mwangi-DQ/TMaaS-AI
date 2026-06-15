@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>AI Readiness Evidence Pack</title>
+  <style>
+    body {
+      font-family: Calibri, Arial, sans-serif;
+      color: #333333;
+      line-height: 1.35;
+      margin: 36pt 48pt;
+    }
+    h1 {
+      color: #1f3864;
+      font-size: 22pt;
+      margin: 0 0 8pt;
+    }
+    h2 {
+      color: #1f3864;
+      font-size: 16pt;
+      margin: 20pt 0 6pt;
+    }
+    h3 {
+      color: #1f3864;
+      font-size: 12pt;
+      margin: 12pt 0 4pt;
+    }
+    p {
+      margin: 0 0 8pt;
+      font-size: 11pt;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8pt 0 14pt;
+      font-size: 10.5pt;
+    }
+    th {
+      background: #1f3864;
+      color: #ffffff;
+      text-align: left;
+      padding: 6pt;
+      border: 1px solid #c8d2e0;
+    }
+    td {
+      padding: 6pt;
+      border: 1px solid #c8d2e0;
+      vertical-align: top;
+    }
+    .note {
+      background: #f2f2f2;
+      border-left: 4pt solid #2e75b6;
+      padding: 8pt 10pt;
+      margin: 10pt 0;
+    }
+    .risk {
+      background: #fff2cc;
+      border-left: 4pt solid #bf9000;
+      padding: 8pt 10pt;
+      margin: 10pt 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>AI Readiness Evidence Pack</h1>
+  <p><strong>Organization:</strong> Meridian Retail Group</p>
+  <p><strong>Sector:</strong> Retail and distribution</p>
+  <p><strong>Prepared for:</strong> DQ AI Readiness Assessment</p>
+  <p><strong>Date:</strong> 15 June 2026</p>
+
+  <div class="note">
+    <p><strong>Purpose:</strong> This document summarizes current data, systems, use-case, people, and leadership conditions for Meridian Retail Group. It is intentionally specific enough for an AI readiness agent to extract evidence and identify contradictions.</p>
+  </div>
+
+  <h2>1. Executive Summary</h2>
+  <p>Meridian Retail Group operates 18 retail branches and one central warehouse. Leadership wants to use AI to reduce stock-outs, improve demand forecasting, and prioritize customer retention campaigns.</p>
+  <p>The executive team describes the business as having a "single source of truth" because sales, inventory, and customer records are exported nightly into a cloud warehouse. However, several source systems still use different customer and product identifiers, and reconciliation is performed manually every Monday by the analytics team.</p>
+  <p>The strongest near-term use case is demand forecasting by branch and product category. The value target is a 15 percent reduction in stock-outs and a 10 percent reduction in slow-moving stock within two quarters.</p>
+
+  <h2>2. Data Accessibility</h2>
+  <p>Sales transactions from POS, inventory balances from ERP, campaign interactions from CRM, and e-commerce orders are copied into the cloud warehouse every night at 02:00. Finance data is available in the warehouse only as month-end exports.</p>
+  <p>Store managers cannot query the warehouse directly. They receive Excel summaries from the analytics team. Analysts access the warehouse through SQL and Power BI.</p>
+  <p>Access permissions are defined by department, but there is no data catalog that explains ownership, refresh schedules, or field definitions across all systems.</p>
+
+  <h2>3. Data Quality History</h2>
+  <table>
+    <tr>
+      <th>Dataset</th>
+      <th>Current Quality Evidence</th>
+      <th>Known Issue</th>
+    </tr>
+    <tr>
+      <td>Customer master</td>
+      <td>CRM contains 420,000 customer profiles.</td>
+      <td>About 18 percent of profiles have missing mobile numbers; duplicate customer records are estimated at 11 percent.</td>
+    </tr>
+    <tr>
+      <td>Product catalog</td>
+      <td>ERP contains SKU, category, supplier, and unit cost fields.</td>
+      <td>Product category labels differ between ERP and e-commerce for 27 percent of active SKUs.</td>
+    </tr>
+    <tr>
+      <td>Sales transactions</td>
+      <td>POS transaction feed is loaded nightly with less than 1 percent missing transaction IDs.</td>
+      <td>Refunds and exchanges are not consistently linked to original transactions.</td>
+    </tr>
+    <tr>
+      <td>Inventory movement</td>
+      <td>Warehouse inventory movement is captured daily.</td>
+      <td>Branch-level cycle count adjustments are entered manually and often arrive three to five days late.</td>
+    </tr>
+  </table>
+  <p>There is a documented data quality dashboard for sales and inventory, but not for customer or campaign data. Data quality incidents are discussed informally in weekly operations calls; there is no formal issue log with owners and due dates.</p>
+
+  <h2>4. Systems Integration</h2>
+  <p>The POS and ERP systems exchange inventory and sales data through scheduled API jobs. CRM and e-commerce data are exported as CSV files and loaded by an orchestration script. HR and training records are not integrated with the analytics environment.</p>
+  <p>There is no master data management process. Product identifiers are mostly aligned between ERP and POS, but customer identifiers differ across CRM, e-commerce, and loyalty systems.</p>
+  <div class="risk">
+    <p><strong>Contradiction to test:</strong> Leadership says the organization has a single source of truth, but customer identifiers differ across three systems and manual reconciliation is still required.</p>
+  </div>
+
+  <h2>5. Use-Case Specificity</h2>
+  <p>The priority use case is branch-level demand forecasting for the top 2,000 SKUs. The first model should predict weekly demand by branch, SKU, promotion status, and seasonality. The intended decision is replenishment quantity recommendations for branch managers.</p>
+  <p>Business owners have defined desired outcomes: reduce stock-outs by 15 percent, reduce slow-moving stock by 10 percent, and improve promotion planning accuracy. A baseline forecast accuracy metric has not yet been agreed.</p>
+  <p>A secondary use case is customer churn prediction for loyalty members. This is less ready because campaign response data is incomplete and consent fields are not consistently captured.</p>
+
+  <h2>6. Implementation Capability</h2>
+  <p>The analytics team has three BI analysts, one data engineer, and one cloud administrator. There is no in-house machine learning engineer. The team has built Power BI dashboards and SQL data marts, but has not deployed a production predictive model.</p>
+  <p>IT can support API integrations and cloud storage. Model monitoring, feature engineering, MLOps, and model governance would require external support or new hiring.</p>
+  <p>The current delivery model is project-based. Business users submit dashboard requests through email, and prioritization happens monthly with the CFO and Head of Operations.</p>
+
+  <h2>7. Adoption Conditions</h2>
+  <p>Store managers are comfortable using Excel-based stock reports, but they do not currently trust automated replenishment suggestions. The operations team wants recommendations to include a confidence score and a short explanation before managers are asked to act on them.</p>
+  <p>No formal change management or training plan exists for AI-enabled forecasting. The Head of Operations has agreed to run a six-branch pilot if the tool can be embedded in the existing weekly stock review process.</p>
+  <p>Warehouse planners are concerned that an AI forecast could be blamed for stock shortages if accountability is not clarified.</p>
+
+  <h2>8. Leadership Sponsorship</h2>
+  <p>The CFO is the executive sponsor and has approved an exploratory budget of QAR 550,000 for a 12-week discovery and pilot phase. The Head of Operations is the business owner for the demand forecasting use case.</p>
+  <p>A steering committee meets monthly, but no product owner has been assigned. Legal and compliance have not yet reviewed data privacy implications for customer churn modeling.</p>
+  <p>The CFO wants a go/no-go decision after the pilot based on measurable business impact, adoption by branch managers, and the reliability of the forecast outputs.</p>
+
+  <h2>9. Evidence Summary for Assessment</h2>
+  <table>
+    <tr>
+      <th>Assessment Area</th>
+      <th>Evidence</th>
+      <th>Likely Readiness Signal</th>
+    </tr>
+    <tr>
+      <td>Data accessibility</td>
+      <td>Nightly cloud warehouse exists, but store managers rely on analyst-generated Excel summaries.</td>
+      <td>Partial readiness</td>
+    </tr>
+    <tr>
+      <td>Data quality history</td>
+      <td>Sales and inventory have quality checks; customer and campaign data have gaps and duplicates.</td>
+      <td>Needs remediation</td>
+    </tr>
+    <tr>
+      <td>Systems integration</td>
+      <td>Some API jobs exist, but CRM/e-commerce CSV loads and customer ID mismatch remain.</td>
+      <td>Partial integration</td>
+    </tr>
+    <tr>
+      <td>Use-case specificity</td>
+      <td>Demand forecasting use case has target KPIs, scope, and decision workflow, but baseline metric is missing.</td>
+      <td>Mostly ready for pilot</td>
+    </tr>
+    <tr>
+      <td>Implementation capability</td>
+      <td>BI and data engineering skills exist; ML engineering and MLOps are absent.</td>
+      <td>Pilot possible with support</td>
+    </tr>
+    <tr>
+      <td>Adoption conditions</td>
+      <td>Managers need explainability and training before trusting recommendations.</td>
+      <td>Adoption risk</td>
+    </tr>
+    <tr>
+      <td>Leadership sponsorship</td>
+      <td>CFO budget and Head of Operations sponsorship exist; product owner and compliance review are missing.</td>
+      <td>Good sponsorship with governance gap</td>
+    </tr>
+  </table>
+
+  <h2>10. Recommended First Action</h2>
+  <p>Before building a model, Meridian should run a two-week data readiness sprint focused on SKU and customer identifier alignment, baseline forecast accuracy, and ownership of data quality issues. The sprint should produce a pilot data dictionary, a cleaned sample dataset for the top 2,000 SKUs, and a named product owner for the forecasting pilot.</p>
+</body>
+</html>

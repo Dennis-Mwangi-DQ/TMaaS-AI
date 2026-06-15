@@ -1,0 +1,37 @@
+{
+  "data_accessibility": {
+    "0": "Data is siloed, manual export only, or inaccessible programmatically.",
+    "1": "Data is accessible via API or DB but fragmented across systems.",
+    "2": "Data is centralized, queryable, and actively integrated."
+  },
+  "data_quality_history": {
+    "0": "Data is untrusted, unlabelled, or lacks historical depth.",
+    "1": "Data is mostly clean but lacks deep history or comprehensive labels.",
+    "2": "Data is clean, labelled, governed, and has strong historical depth."
+  },
+  "systems_integration": {
+    "0": "Core systems are disconnected; manual data entry prevails.",
+    "1": "Some systems integrated point-to-point; partial automation.",
+    "2": "Systems fully integrated via API/ESB; strong platform coherence."
+  },
+  "use_case_specificity": {
+    "0": "Vague aspiration ('we want AI'); no measurable problem defined.",
+    "1": "Specific problems identified but ROI/metrics not yet validated.",
+    "2": "Highly specific use cases with clear success metrics and ROI."
+  },
+  "implementation_capability": {
+    "0": "No internal tech capability; waterfall delivery model.",
+    "1": "Basic IT capability; transitioning to agile delivery.",
+    "2": "Strong technical capability; mature agile and product ownership."
+  },
+  "adoption_conditions": {
+    "0": "Workforce resistant or lacking basic digital literacy.",
+    "1": "Workforce capable but lacks structured change management.",
+    "2": "High digital literacy; mature change management in place."
+  },
+  "leadership_sponsorship": {
+    "0": "No executive mandate; viewed as an IT experiment.",
+    "1": "Executive support exists but budget/accountability unclear.",
+    "2": "Strong board mandate, clear budget, named executive sponsor."
+  }
+}
