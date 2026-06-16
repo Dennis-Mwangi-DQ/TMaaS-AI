@@ -34,6 +34,40 @@
     .chat-markdown th { background: #0F172A; color: #fff; font-weight: 600; }
     .chat-markdown tr:nth-child(even) td { background: #f8fafc; }
     .chat-markdown h2, .chat-markdown h3 { font-weight: 700; color: #0F172A; margin: 1rem 0 0.5rem; }
+    /* Typing indicator */
+    .typing-bubble { display: flex; align-items: center; gap: 4px; padding: 12px 16px; }
+    .typing-bubble span {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #94A3B8;
+      animation: typing-bounce 1.2s infinite ease-in-out;
+    }
+    .typing-bubble span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-bubble span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing-bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+    /* Report loading overlay */
+    #report-loading {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      text-align: center;
+    }
+    #report-loading.visible { display: flex; }
+    .report-spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #E2E8F0;
+      border-top-color: #D97706;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 1rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     #left-panel.collapsed {
       width: 0 !important;
       max-width: 0 !important;
@@ -187,7 +221,7 @@
         <div class="bg-white p-4 rounded-lg rounded-tl-none shadow-sm max-w-[90%] border border-gray-100 text-gray-800 text-sm leading-relaxed">
           <p class="font-semibold text-[#0F172A] mb-2">Welcome to your AI Readiness Assessment</p>
           <p class="mb-2">I'm a Senior DQ Advisor. I'll interview you about your organisation's readiness for AI across seven dimensions — using any documents you upload as evidence.</p>
-          <p class="text-gray-600">Upload a document on the left, or type a message below to begin. I'll ask one question at a time until we've covered all five topics, then produce your advisory.</p>
+          <p class="text-gray-600">Upload a document on the left, or type a message below to begin.</p>
         </div>
       </div>
     </div>
@@ -220,7 +254,15 @@
   </div>
 
   <!-- Right Panel: Results -->
-  <div class="hidden w-full md:w-1/2 shrink-0 p-6 bg-white shadow-lg overflow-y-auto panel" id="right-panel">
+  <div class="hidden w-full md:w-1/2 shrink-0 bg-white shadow-lg overflow-y-auto panel" id="right-panel">
+    <!-- Report loading state -->
+    <div id="report-loading">
+      <div class="report-spinner"></div>
+      <p class="text-sm font-semibold text-gray-700" id="report-loading-title">Generating your advisory…</p>
+      <p class="text-xs text-gray-400 mt-2 max-w-[220px]" id="report-loading-sub">Analysing evidence, scoring dimensions, and building your report.</p>
+    </div>
+    <!-- Report content (hidden until ready) -->
+    <div id="report-content" class="p-6">
     <div class="flex items-center gap-2 mb-1">
       <span class="text-2xl">✓</span>
       <h2 class="text-2xl font-bold">Assessment Complete</h2>
@@ -255,6 +297,7 @@
     <button id="download-pdf" class="w-full bg-[#D97706] text-white py-3 rounded-lg font-bold hover:bg-amber-600 transition shadow-md sticky bottom-0">
       Download Full PDF Advisory
     </button>
+    </div><!-- /report-content -->
   </div>
 
   <script>
@@ -464,11 +507,17 @@
         throw new Error('Assessment is not ready to generate a report yet.');
       }
 
+      // Show right panel with loader before the (slow) generation call
+      leftPanelCollapsed = true;
+      setResultsLayout(true);
+      showReportLoading('Generating your advisory…', 'Running analysis across all seven dimensions. This takes 20–40 seconds.');
+
       const completeRes = await fetch(`/api/session/${sessionId}/complete`, {
         method: 'POST',
       });
       const completeData = await completeRes.json();
       if (!completeRes.ok) {
+        hideReportLoading();
         throw new Error(completeData.error || 'Failed to generate assessment report.');
       }
 
@@ -502,6 +551,45 @@
       chatCta.classList.add('hidden');
       quickReplies.classList.add('hidden');
       chatInput.placeholder = 'Type your response…';
+    }
+
+    // ── Typing indicator ──────────────────────────────────────────────────────
+    let typingBubble = null;
+
+    function showTypingIndicator() {
+      if (typingBubble) return;
+      typingBubble = document.createElement('div');
+      typingBubble.id = 'typing-indicator';
+      typingBubble.className = 'flex flex-col w-full';
+      typingBubble.innerHTML = `
+        <div class="bg-white rounded-lg rounded-tl-none shadow-sm max-w-[90%] border border-gray-100 self-start">
+          <div class="typing-bubble">
+            <span></span><span></span><span></span>
+          </div>
+        </div>`;
+      chatBox.appendChild(typingBubble);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function hideTypingIndicator() {
+      typingBubble?.remove();
+      typingBubble = null;
+    }
+
+    // ── Report loading state ───────────────────────────────────────────────────
+    const reportLoading = document.getElementById('report-loading');
+    const reportContent = document.getElementById('report-content');
+
+    function showReportLoading(title = 'Generating your advisory…', sub = 'Analysing evidence, scoring dimensions, and building your report.') {
+      document.getElementById('report-loading-title').textContent = title;
+      document.getElementById('report-loading-sub').textContent = sub;
+      reportLoading.classList.add('visible');
+      reportContent.style.display = 'none';
+    }
+
+    function hideReportLoading() {
+      reportLoading.classList.remove('visible');
+      reportContent.style.display = '';
     }
 
     function renderMarkdown(text) {
@@ -712,6 +800,7 @@
     }
 
     function showResults(result, session) {
+      hideReportLoading();
       const level = result.readinessLevel;
       const styles = READINESS_STYLES[level] || READINESS_STYLES['Foundation Needed'];
       const extended = result.extendedReport;
@@ -844,7 +933,9 @@
       welcomeMessage?.remove();
 
       chatInput.disabled = true;
+      sendBtn.disabled = true;
       sendBtn.textContent = '…';
+      showTypingIndicator();
 
       try {
         const res = await fetch('/api/chat', {
@@ -865,6 +956,8 @@
           sessionIdDisplay.title = sessionId;
         }
 
+        hideTypingIndicator();
+
         if (data.session) {
           updateSessionUI(data.session);
         }
@@ -879,13 +972,16 @@
           try {
             await ensureAssessmentResult();
           } catch (err) {
+            hideReportLoading();
             addMessage(err.message || 'Assessment completed, but the report could not be loaded.', false);
           }
         }
       } catch (err) {
+        hideTypingIndicator();
         addMessage(err.message || 'Error communicating with advisor.', false);
       } finally {
         chatInput.disabled = false;
+        sendBtn.disabled = false;
         sendBtn.textContent = 'Send';
         chatInput.focus();
       }
@@ -947,9 +1043,15 @@
       try {
         downloadPdf.disabled = true;
         downloadPdf.textContent = 'Preparing PDF…';
+        if (!resultsVisible) {
+          showReportLoading('Preparing PDF…', 'Building your full advisory document.');
+          leftPanelCollapsed = true;
+          setResultsLayout(true);
+        }
         await ensureAssessmentResult();
         window.open(`/api/report/${sessionId}`, '_blank');
       } catch (err) {
+        hideReportLoading();
         addMessage(err.message || 'Could not prepare the PDF report.', false);
       } finally {
         downloadPdf.disabled = false;
