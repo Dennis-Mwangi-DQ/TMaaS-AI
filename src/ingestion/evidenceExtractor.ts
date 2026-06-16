@@ -47,18 +47,16 @@ The JSON shape must be:
       documentName,
     }));
 
-    if (supabase) {
-      const dbRecords = recordsToSave.map(r => ({
-        session_id: sessionId,
-        dimension: r.dimension,
-        quality: r.quality,
-        extracted_text: r.extractedText,
-        agent_interpretation: r.agentInterpretation,
-        source: r.source,
-        document_name: r.documentName,
-      }));
-      await supabase.from('evidence_records').insert(dbRecords);
-    }
+    const dbRecords = recordsToSave.map(r => ({
+      session_id: sessionId,
+      dimension: r.dimension,
+      quality: r.quality,
+      extracted_text: r.extractedText,
+      agent_interpretation: r.agentInterpretation,
+      source: r.source,
+      document_name: r.documentName,
+    }));
+    await supabase.from('evidence_records').insert(dbRecords);
 
     return recordsToSave;
   } catch (error) {

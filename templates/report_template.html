@@ -1,70 +1,525 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>TMaaS AI Readiness Advisory</title>
   <style>
-    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; line-height: 1.5; margin: 0; padding: 20px; }
-    .header { border-bottom: 2px solid #D97706; padding-bottom: 10px; margin-bottom: 20px; }
-    .header h1 { margin: 0; color: #1F2937; }
-    .meta { color: #6B7280; font-size: 0.9em; margin-top: 5px; }
-    h2 { color: #D97706; margin-top: 30px; border-bottom: 1px solid #E5E7EB; padding-bottom: 5px; }
-    .level { font-size: 1.5em; font-weight: bold; padding: 10px; background: #FEF3C7; color: #92400E; display: inline-block; border-radius: 5px; }
-    .narrative { font-size: 1.1em; background: #F3F4F6; padding: 15px; border-left: 4px solid #4B5563; }
-    .blocker { margin-bottom: 15px; }
-    .blocker-title { font-weight: bold; color: #DC2626; }
-    .use-case { margin-bottom: 15px; padding: 10px; border: 1px solid #E5E7EB; border-radius: 5px; }
-    .use-case-name { font-weight: bold; color: #2563EB; }
-    .action { font-size: 1.2em; padding: 15px; background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 5px; margin-top: 20px; }
-    .footer { margin-top: 50px; font-size: 0.8em; color: #9CA3AF; text-align: center; border-top: 1px solid #E5E7EB; padding-top: 10px; }
+    @page { margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #0F172A;
+      line-height: 1.55;
+      margin: 0;
+      padding: 0;
+      font-size: 11pt;
+    }
+    .page { padding: 36px 42px 48px; }
+    .page-break { page-break-before: always; }
+    .cover-bar {
+      background: #0F172A;
+      color: #fff;
+      padding: 28px 42px;
+      margin: 0 0 28px;
+    }
+    .cover-bar h1 {
+      margin: 0 0 6px;
+      font-size: 24pt;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .cover-bar .subtitle {
+      color: #CBD5E1;
+      font-size: 10pt;
+      margin: 0;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 24px;
+      margin-bottom: 28px;
+      font-size: 9.5pt;
+      color: #475569;
+    }
+    .meta-label {
+      font-weight: 600;
+      color: #64748B;
+      text-transform: uppercase;
+      font-size: 8pt;
+      letter-spacing: 0.04em;
+    }
+    h2 {
+      color: #0F172A;
+      font-size: 13pt;
+      margin: 28px 0 12px;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #D97706;
+    }
+    h3 {
+      color: #1E3A8A;
+      font-size: 11pt;
+      margin: 18px 0 8px;
+    }
+    .readiness-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      background: #FFFBEB;
+      border: 1px solid #FCD34D;
+      border-left: 5px solid #D97706;
+      padding: 16px 18px;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+    .readiness-level {
+      font-size: 18pt;
+      font-weight: 700;
+      color: #92400E;
+      margin: 0;
+    }
+    .readiness-score {
+      font-size: 10pt;
+      color: #78350F;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .narrative {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      padding: 14px 16px;
+      border-radius: 6px;
+      color: #334155;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 9.5pt;
+    }
+    table.data-table th {
+      background: #0F172A;
+      color: #fff;
+      text-align: left;
+      padding: 8px 10px;
+      font-weight: 600;
+      font-size: 8.5pt;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    table.data-table td {
+      border-bottom: 1px solid #E2E8F0;
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    table.data-table tr:nth-child(even) td { background: #F8FAFC; }
+    table.scorecard th.score-col,
+    table.scorecard td.score-col { text-align: center; width: 52px; }
+    .score-pill {
+      display: inline-block;
+      min-width: 22px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 9pt;
+      text-align: center;
+    }
+    .score-0 { background: #FEE2E2; color: #991B1B; }
+    .score-1 { background: #FEF3C7; color: #92400E; }
+    .score-2 { background: #D1FAE5; color: #065F46; }
+    .status-text {
+      font-size: 8.5pt;
+      color: #64748B;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .blocker {
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border: 1px solid #FECACA;
+      border-left: 4px solid #DC2626;
+      background: #FEF2F2;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    .blocker-title {
+      font-weight: 700;
+      color: #991B1B;
+      margin-bottom: 4px;
+      font-size: 10.5pt;
+    }
+    .blocker-desc { color: #7F1D1D; font-size: 10pt; }
+    .blocker-field { margin-top: 6px; font-size: 9.5pt; }
+    .blocker-field strong { color: #991B1B; }
+    .action-box {
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-left: 4px solid #2563EB;
+      padding: 14px 16px;
+      border-radius: 4px;
+      color: #1E3A8A;
+      font-size: 10.5pt;
+    }
+    .use-case {
+      margin-bottom: 12px;
+      padding: 12px 14px;
+      border: 1px solid #E2E8F0;
+      border-radius: 4px;
+      page-break-inside: avoid;
+    }
+    .use-case-name {
+      font-weight: 700;
+      color: #0F172A;
+      margin-bottom: 4px;
+    }
+    .use-case-meta {
+      font-size: 8.5pt;
+      color: #64748B;
+      margin-bottom: 6px;
+    }
+    .use-case-field { font-size: 9.5pt; margin-top: 4px; color: #334155; }
+    .use-case-field strong { color: #0F172A; }
+    .horizon-immediate td { background: #FEF2F2 !important; }
+    .horizon-foundation td { background: #FFFBEB !important; }
+    .horizon-deployment td { background: #ECFDF5 !important; }
+    .dimension-dive {
+      margin-bottom: 16px;
+      page-break-inside: avoid;
+    }
+    .dimension-dive table td:first-child {
+      font-weight: 600;
+      width: 28%;
+      background: #F1F5F9;
+    }
+    .findings-box {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      padding: 12px 14px;
+      border-radius: 4px;
+      margin-top: 12px;
+      font-size: 10pt;
+    }
+    .findings-box ul { margin: 4px 0 8px 18px; padding: 0; }
+    .evidence-item {
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      background: #F8FAFC;
+      border-left: 3px solid #94A3B8;
+      font-size: 9.5pt;
+    }
+    .evidence-source {
+      font-size: 8pt;
+      color: #64748B;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .footer {
+      margin-top: 36px;
+      padding-top: 12px;
+      border-top: 1px solid #E2E8F0;
+      font-size: 8.5pt;
+      color: #94A3B8;
+      text-align: center;
+    }
+    .section { page-break-inside: avoid; }
   </style>
 </head>
 <body>
+  <div class="cover-bar">
+    <h1>AI Readiness Advisory</h1>
+    <p class="subtitle">TMaaS Agent A — DQ Digital Transformation Assessment</p>
+  </div>
 
-  <div class="header">
-    <h1>TMaaS AI Readiness Advisory</h1>
-    <div class="meta">
-      {{#if session.organisation}}Organization: {{session.organisation}}<br>{{/if}}
-      {{#if session.sector}}Sector: {{session.sector}}<br>{{/if}}
-      Date: {{session.createdAt}}
+  <div class="page">
+    <div class="meta-grid">
+      {{#if session.organisation}}
+      <div>
+        <div class="meta-label">Organisation</div>
+        <div>{{session.organisation}}</div>
+      </div>
+      {{/if}}
+      {{#if session.sector}}
+      <div>
+        <div class="meta-label">Sector</div>
+        <div>{{session.sector}}</div>
+      </div>
+      {{/if}}
+      <div>
+        <div class="meta-label">Assessment Date</div>
+        <div>{{formattedDate}}</div>
+      </div>
+      <div>
+        <div class="meta-label">Session Reference</div>
+        <div>{{session.sessionId}}</div>
+      </div>
+    </div>
+
+    <!-- Section 1: Executive Summary -->
+    <div class="section">
+      <h2>1. Executive Summary</h2>
+      <div class="readiness-banner">
+        <p class="readiness-level">{{result.readinessLevel}}</p>
+        <p class="readiness-score">Score: {{totalScore}} / {{maxScore}}</p>
+      </div>
+
+      <table class="data-table" style="margin-bottom: 14px;">
+        <thead>
+          <tr>
+            <th>Readiness Tier</th>
+            <th>Composite Score</th>
+            <th>Primary Strength</th>
+            <th>Primary Gap</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>{{result.readinessLevel}}</strong></td>
+            <td>{{totalScore}} / {{maxScore}}</td>
+            <td>{{executiveSummary.primaryStrength}}</td>
+            <td>{{executiveSummary.primaryGap}}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="narrative">{{result.narrative}}</div>
+      {{#if levelSummary}}
+      <p style="margin-top: 12px; color: #475569; font-size: 10pt;">{{levelSummary}}</p>
+      {{/if}}
+
+      {{#if findings}}
+      <div class="findings-box">
+        <strong>What we believe is true:</strong>
+        <ul>{{#each findings.believed}}<li>{{this}}</li>{{/each}}</ul>
+        <strong>What remains uncertain:</strong>
+        <ul>{{#each findings.uncertain}}<li>{{this}}</li>{{/each}}</ul>
+        <p><strong>Biggest risk:</strong> {{findings.biggestRisk}}</p>
+        <p><strong>Recommended next step:</strong> {{findings.recommendedNextStep}}</p>
+      </div>
+      {{/if}}
+    </div>
+
+    <!-- Section 2: Dimension Scorecard -->
+    <div class="section page-break">
+      <h2>2. Dimension Scorecard</h2>
+      <table class="data-table scorecard">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th class="score-col">Score</th>
+            <th>Status</th>
+            <th>Assessment</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each dimensionRows}}
+          <tr>
+            <td><strong>{{this.label}}</strong></td>
+            <td class="score-col"><span class="score-pill score-{{this.score}}">{{this.score}}</span></td>
+            <td><span class="status-text">{{this.status}}</span></td>
+            <td>{{this.note}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 3: Dimension-Level Analysis -->
+    {{#if hasExtended}}
+    <div class="section page-break">
+      <h2>3. Dimension-Level Analysis</h2>
+      <p style="font-size: 10pt; color: #475569;">Detailed breakdown of each dimension including evidence, gaps, and deployment implications.</p>
+      {{#each dimensionAnalyses}}
+      <div class="dimension-dive">
+        <h3>3.{{this.sectionNumber}} {{this.label}} ({{this.score}}/2 — {{this.status}}{{#if this.confidence}}, {{this.confidence}} confidence{{/if}})</h3>
+        <table class="data-table">
+          <tbody>
+            <tr><td>Evidence gathered</td><td>{{this.evidence}}</td></tr>
+            <tr><td>Gaps identified</td><td>{{this.gaps}}</td></tr>
+            <tr><td>AI deployment impact</td><td>{{this.deploymentImpact}}</td></tr>
+            <tr><td>Recommended actions</td><td>{{this.recommendedActionsText}}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    <!-- Section 4: Critical Blockers -->
+    <div class="section page-break">
+      <h2>4. Critical Blockers</h2>
+      {{#if detailedBlockers.length}}
+        {{#each detailedBlockers}}
+        <div class="blocker">
+          <div class="blocker-title">BLOCKER: {{this.title}}</div>
+          <div class="blocker-field"><strong>Affected dimensions:</strong> {{#each this.affectedDimensions}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</div>
+          <div class="blocker-field"><strong>Severity:</strong> {{this.severity}}</div>
+          <div class="blocker-field"><strong>Root cause:</strong> {{this.rootCause}}</div>
+          <div class="blocker-field"><strong>Business impact:</strong> {{this.businessImpact}}</div>
+          <div class="blocker-field"><strong>Resolution pathway:</strong> {{this.resolutionPathway}}</div>
+          <div class="blocker-field"><strong>Dependencies:</strong> {{this.dependencies}}</div>
+        </div>
+        {{/each}}
+      {{else}}
+        {{#each result.blockers}}
+        <div class="blocker">
+          <div class="blocker-title">{{this.title}}</div>
+          <div class="blocker-desc">{{this.description}}</div>
+        </div>
+        {{/each}}
+      {{/if}}
+    </div>
+
+    <!-- Section 5: Recommended AI Use Cases -->
+    <div class="section page-break">
+      <h2>5. Recommended AI Use Cases</h2>
+      <table class="data-table" style="margin-bottom: 16px;">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Use Case</th>
+            <th>Min. Readiness</th>
+            <th>Complexity</th>
+            <th>Est. Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each result.useCases}}
+          <tr>
+            <td>{{@index}}</td>
+            <td><strong>{{this.useCase.name}}</strong></td>
+            <td>{{this.useCase.min_readiness_level}}</td>
+            <td>{{this.useCase.implementation_complexity}}</td>
+            <td>{{this.useCase.cost_band_indicative}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+
+      {{#each result.useCases}}
+      <div class="use-case">
+        <div class="use-case-name">Use Case {{@index}}: {{this.useCase.name}}</div>
+        <div class="use-case-meta">
+          Minimum readiness: {{this.useCase.min_readiness_level}} |
+          Complexity: {{this.useCase.implementation_complexity}} |
+          Indicative cost: {{this.useCase.cost_band_indicative}}
+        </div>
+        <div class="use-case-field">{{this.rationale}}</div>
+        {{#if this.details}}
+        <div class="use-case-field"><strong>Description:</strong> {{this.details.description}}</div>
+        <div class="use-case-field"><strong>Business rationale:</strong> {{this.details.businessRationale}}</div>
+        <div class="use-case-field"><strong>Data requirements:</strong> {{this.details.dataRequirements}}</div>
+        <div class="use-case-field"><strong>Integration points:</strong> {{this.details.integrationPoints}}</div>
+        <div class="use-case-field"><strong>Key risks:</strong> {{#each this.details.keyRisks}}{{this}}{{#unless @last}}; {{/unless}}{{/each}}</div>
+        <div class="use-case-field"><strong>Sequencing:</strong> {{this.details.sequencing}}</div>
+        <div class="use-case-field"><strong>Vendor / build note:</strong> {{this.details.vendorNote}}</div>
+        {{/if}}
+      </div>
+      {{/each}}
+    </div>
+
+    <!-- Section 6: Roadmap -->
+    {{#if roadmap.length}}
+    <div class="section page-break">
+      <h2>6. Recommended Roadmap</h2>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Horizon</th>
+            <th>Timeline</th>
+            <th>Action</th>
+            <th>Owner</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each roadmap}}
+          <tr class="{{this.horizonClass}}">
+            <td><strong>{{this.horizon}}</strong></td>
+            <td>{{this.timeline}}</td>
+            <td>{{this.action}}</td>
+            <td>{{this.owner}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+    {{/if}}
+
+    <!-- Section 7: Risks, Assumptions & Constraints -->
+    {{#if hasExtended}}
+    <div class="section page-break">
+      <h2>7. Risks, Assumptions &amp; Constraints</h2>
+
+      {{#if assumptions.length}}
+      <h3>7.1 Key Assumptions</h3>
+      <ul>{{#each assumptions}}<li>{{this}}</li>{{/each}}</ul>
+      {{/if}}
+
+      {{#if risks.length}}
+      <h3>7.2 Key Risks</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Risk</th>
+            <th>Likelihood</th>
+            <th>Impact</th>
+            <th>Mitigation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each risks}}
+          <tr>
+            <td>{{this.risk}}</td>
+            <td>{{this.likelihood}}</td>
+            <td>{{this.impact}}</td>
+            <td>{{this.mitigation}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      {{/if}}
+
+      {{#if constraints}}
+      <h3>7.3 Constraints Noted</h3>
+      <p style="font-size: 10pt;">{{constraints}}</p>
+      {{/if}}
+    </div>
+    {{/if}}
+
+    <!-- Section 8: Immediate Next Steps -->
+    <div class="section page-break">
+      <h2>8. Immediate Next Steps</h2>
+      {{#if nextSteps.length}}
+        {{#each nextSteps}}
+        <h3>{{this.label}}</h3>
+        <p style="font-size: 10pt; margin-bottom: 10px;">{{this.action}}</p>
+        {{/each}}
+      {{else}}
+        <h3>Priority 1 Action (30 Days)</h3>
+        <div class="action-box">{{result.firstAction}}</div>
+      {{/if}}
+    </div>
+
+    <!-- Section 9: Appendix -->
+    {{#if hasExtended}}
+    <div class="section page-break">
+      <h2>9. Appendix</h2>
+      <h3>9.1 Assessment Methodology</h3>
+      <p style="font-size: 10pt;">This advisory is produced using a structured seven-dimension scoring framework administered by DQ TMaaS Agent A. Each dimension is assessed via discovery session questions, scored 0-2, and aggregated to a composite score. Recommendations are calibrated to the organisation's tier and sector context.</p>
+
+      <h3>9.2 Session Notes &amp; Evidence</h3>
+      {{#each sessionEvidence}}
+      <div class="evidence-item">
+        <div class="evidence-source">{{this.source}}{{#if this.dimension}} — {{this.dimension}}{{/if}}</div>
+        <div>{{this.text}}</div>
+      </div>
+      {{/each}}
+    </div>
+    {{/if}}
+
+    <div class="footer">
+      Confidential advisory output generated by DQ TMaaS Agent A. This document is indicative and does not constitute a formal engagement deliverable.
     </div>
   </div>
-
-  <div>
-    <h2>Readiness Level</h2>
-    <div class="level">{{result.readinessLevel}}</div>
-    <div class="narrative">{{result.narrative}}</div>
-  </div>
-
-  <div>
-    <h2>Critical Blockers</h2>
-    {{#each result.blockers}}
-    <div class="blocker">
-      <div class="blocker-title">{{this.title}}</div>
-      <div>{{this.description}}</div>
-    </div>
-    {{/each}}
-  </div>
-
-  <div>
-    <h2>Recommended First Action</h2>
-    <div class="action">{{result.firstAction}}</div>
-  </div>
-
-  <div>
-    <h2>Viable Use Cases for Your Sector</h2>
-    {{#each result.useCases}}
-    <div class="use-case">
-      <div class="use-case-name">{{this.useCase.name}}</div>
-      <div>{{this.rationale}}</div>
-      <div style="font-size: 0.9em; color: #6B7280; margin-top: 5px;">Complexity: {{this.useCase.implementation_complexity}} | Cost: {{this.useCase.cost_band_indicative}}</div>
-    </div>
-    {{/each}}
-  </div>
-
-  <div class="footer">
-    Powered by DQ TMaaS Agent A
-  </div>
-
 </body>
 </html>

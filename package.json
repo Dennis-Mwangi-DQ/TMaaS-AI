@@ -2,16 +2,14 @@
   "name": "tmaas-ai-readiness",
   "version": "0.1.0",
   "private": true,
-  "description": "TypeScript backend for the Browz Booking Concierge AI Agent.",
+  "description": "TypeScript backend for the TMaaS AI Readiness Assessment Agent.",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "seed:generate-slots": "tsx seed/generateSlots.ts",
-    "seed:generate-embeddings": "tsx seed/generateEmbeddings.ts"
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=20"

@@ -86,6 +86,94 @@ export const BlockerSchema = z.object({
 });
 export type Blocker = z.infer<typeof BlockerSchema>;
 
+export const ExecutiveSummarySchema = z.object({
+  primaryStrength: z.string(),
+  primaryGap: z.string(),
+});
+export type ExecutiveSummary = z.infer<typeof ExecutiveSummarySchema>;
+
+export const DimensionAnalysisSchema = z.object({
+  dimension: DimensionNames,
+  evidence: z.string(),
+  gaps: z.string(),
+  deploymentImpact: z.string(),
+  recommendedActions: z.array(z.string()),
+  confidence: z.enum(['Low', 'Medium', 'High']).optional(),
+});
+export type DimensionAnalysis = z.infer<typeof DimensionAnalysisSchema>;
+
+export const DetailedBlockerSchema = z.object({
+  title: z.string(),
+  affectedDimensions: z.array(z.string()),
+  severity: z.string(),
+  rootCause: z.string(),
+  businessImpact: z.string(),
+  resolutionPathway: z.string(),
+  dependencies: z.string(),
+});
+export type DetailedBlocker = z.infer<typeof DetailedBlockerSchema>;
+
+export const UseCaseDetailSchema = z.object({
+  description: z.string(),
+  businessRationale: z.string(),
+  dataRequirements: z.string(),
+  integrationPoints: z.string(),
+  keyRisks: z.array(z.string()),
+  sequencing: z.string(),
+  vendorNote: z.string(),
+});
+export type UseCaseDetail = z.infer<typeof UseCaseDetailSchema>;
+
+export const RoadmapItemSchema = z.object({
+  horizon: z.enum(['Immediate', 'Foundation', 'Deployment']),
+  timeline: z.string(),
+  action: z.string(),
+  owner: z.string(),
+});
+export type RoadmapItem = z.infer<typeof RoadmapItemSchema>;
+
+export const RiskItemSchema = z.object({
+  risk: z.string(),
+  likelihood: z.string(),
+  impact: z.string(),
+  mitigation: z.string(),
+});
+export type RiskItem = z.infer<typeof RiskItemSchema>;
+
+export const NextStepSchema = z.object({
+  label: z.string(),
+  timeframe: z.string(),
+  action: z.string(),
+});
+export type NextStep = z.infer<typeof NextStepSchema>;
+
+export const SessionEvidenceItemSchema = z.object({
+  dimension: z.string().optional(),
+  source: z.enum(['DOCUMENT', 'CONVERSATION']),
+  text: z.string(),
+});
+export type SessionEvidenceItem = z.infer<typeof SessionEvidenceItemSchema>;
+
+export const ExtendedReportSchema = z.object({
+  executiveSummary: ExecutiveSummarySchema,
+  dimensionAnalyses: z.array(DimensionAnalysisSchema),
+  detailedBlockers: z.array(DetailedBlockerSchema),
+  useCaseDetails: z.array(UseCaseDetailSchema),
+  roadmap: z.array(RoadmapItemSchema),
+  assumptions: z.array(z.string()),
+  risks: z.array(RiskItemSchema),
+  constraints: z.string(),
+  nextSteps: z.array(NextStepSchema),
+  sessionEvidence: z.array(SessionEvidenceItemSchema),
+  findings: z.object({
+    believed: z.array(z.string()),
+    uncertain: z.array(z.string()),
+    biggestRisk: z.string(),
+    recommendedNextStep: z.string(),
+  }).optional(),
+});
+export type ExtendedReport = z.infer<typeof ExtendedReportSchema>;
+
 export const AssessmentResultSchema = z.object({
   readinessLevel: ReadinessLevel,
   narrative: z.string(),
@@ -94,9 +182,11 @@ export const AssessmentResultSchema = z.object({
     z.object({
       useCase: UseCaseEntrySchema,
       rationale: z.string(),
+      details: UseCaseDetailSchema.optional(),
     })
   ),
   firstAction: z.string(),
+  extendedReport: ExtendedReportSchema.optional(),
 });
 export type AssessmentResult = z.infer<typeof AssessmentResultSchema>;
 

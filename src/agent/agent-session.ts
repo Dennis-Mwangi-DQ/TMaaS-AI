@@ -18,7 +18,6 @@ export function buildAgentContext(session: AssessmentSession): AgentContext {
 }
 
 export async function fetchEvidenceContext(sessionId: string): Promise<EvidenceRecord[]> {
-  if (!supabase) return [];
   const { data, error } = await supabase.from('evidence_records').select('*').eq('session_id', sessionId);
   if (error || !data) return [];
   return data.map(d => ({

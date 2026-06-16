@@ -5,8 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TMaaS AI Readiness Assessment</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* TMaaS specific color palette */
     :root {
       --dq-navy: #0F172A;
       --dq-amber: #D97706;
@@ -17,91 +19,264 @@
       color: var(--dq-navy);
       font-family: 'Inter', sans-serif;
     }
-    .panel {
-      transition: all 0.3s ease-in-out;
+    .panel { transition: all 0.3s ease-in-out; }
+    .upload-zone-active { border-color: #D97706; background-color: #FFFBEB; }
+    .chat-markdown p { margin-bottom: 0.625rem; }
+    .chat-markdown p:last-child { margin-bottom: 0; }
+    .chat-markdown strong { font-weight: 600; color: #0F172A; }
+    .chat-markdown em { font-style: italic; }
+    .chat-markdown ul, .chat-markdown ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+    .chat-markdown li { margin-bottom: 0.25rem; }
+    .chat-markdown code { font-size: 0.85em; background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 0.25rem; }
+    .chat-markdown a { color: #D97706; text-decoration: underline; }
+    .chat-markdown table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.8rem; }
+    .chat-markdown th, .chat-markdown td { border: 1px solid #e2e8f0; padding: 0.4rem 0.5rem; text-align: left; vertical-align: top; }
+    .chat-markdown th { background: #0F172A; color: #fff; font-weight: 600; }
+    .chat-markdown tr:nth-child(even) td { background: #f8fafc; }
+    .chat-markdown h2, .chat-markdown h3 { font-weight: 700; color: #0F172A; margin: 1rem 0 0.5rem; }
+    #left-panel.collapsed {
+      width: 0 !important;
+      max-width: 0 !important;
+      padding: 0 !important;
+      overflow: hidden;
+      opacity: 0;
+      border: none;
+      box-shadow: none;
     }
+    #left-panel.mobile-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 40;
+      width: min(100%, 20rem) !important;
+      max-width: 20rem !important;
+      opacity: 1;
+      padding: 1.5rem !important;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    }
+    #left-panel-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.4);
+      z-index: 30;
+    }
+    #left-panel-backdrop.visible { display: block; }
+    .accordion-section { border: 1px solid #e2e8f0; border-radius: 0.5rem; margin-bottom: 0.75rem; overflow: hidden; }
+    .accordion-header {
+      width: 100%;
+      text-align: left;
+      padding: 0.75rem 1rem;
+      background: #f8fafc;
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: #0F172A;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      border: none;
+    }
+    .accordion-header:hover { background: #f1f5f9; }
+    .accordion-body { padding: 0.75rem 1rem; font-size: 0.875rem; color: #334155; border-top: 1px solid #e2e8f0; }
+    .accordion-body.hidden { display: none; }
+    #left-panel-toggle {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.375rem;
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.2);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #left-panel-toggle:hover { background: rgba(255,255,255,0.2); }
+    #left-panel-toggle.visible { display: inline-flex; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
 </head>
-<body class="h-screen flex flex-col md:flex-row overflow-hidden">
-  
-  <!-- Left Panel: Context & Upload -->
-  <div class="w-full md:w-1/3 p-6 bg-white shadow-lg z-10 flex flex-col justify-between overflow-y-auto panel" id="left-panel">
-    <div>
-      <h1 class="text-2xl font-bold mb-2">AI Readiness Assessment</h1>
-      <p class="text-gray-600 mb-6">Upload your context documents (strategy, IT inventory, org chart) before starting, or begin the assessment directly.</p>
+<body class="h-screen flex flex-col md:flex-row overflow-hidden" id="app-layout">
+  <div id="left-panel-backdrop"></div>
 
-      <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-[#D97706] transition cursor-pointer" id="upload-zone">
-        <p class="text-gray-500">Drag & drop PDF, DOCX, or PPTX here, or click to select.</p>
+  <!-- Left Panel: Documents & Progress -->
+  <div class="w-full md:w-1/3 md:max-w-md shrink-0 p-6 bg-white shadow-lg z-10 flex flex-col overflow-y-auto panel" id="left-panel">
+    <div class="flex-1">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h1 class="text-2xl font-bold">AI Readiness Assessment</h1>
+          <p class="text-gray-500 text-sm mt-1">Upload context documents, then chat with the advisor.</p>
+        </div>
+        <span id="session-status-badge" class="shrink-0 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+          Active
+        </span>
+      </div>
+
+      <div class="border-2 border-dashed border-gray-300 rounded-xl p-5 text-center hover:border-[#D97706] transition cursor-pointer mb-5" id="upload-zone">
+        <div class="text-2xl mb-2">📄</div>
+        <p class="text-gray-600 text-sm font-medium">Drop PDF, DOCX, or PPTX here</p>
+        <p class="text-gray-400 text-xs mt-1">or click to browse (max 10 MB)</p>
         <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.pptx" />
       </div>
-      <div id="upload-status" class="mt-4 text-sm font-semibold hidden text-[#D97706]"></div>
+      <div id="upload-status" class="mb-4 text-sm font-medium hidden"></div>
+
+      <section class="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+        <h2 class="text-sm font-semibold text-[#0F172A] mb-2">How this works</h2>
+        <ol class="text-xs text-gray-600 space-y-2 list-decimal list-inside leading-relaxed">
+          <li><span class="font-medium text-gray-800">Upload</span> — we extract evidence from your documents (strategy, IT inventory, org charts).</li>
+          <li><span class="font-medium text-gray-800">Interview</span> — the advisor asks focused questions across 5 topics: Data, Systems, Use case, People, Leadership.</li>
+          <li><span class="font-medium text-gray-800">Advisory</span> — you receive a readiness level, blockers, viable AI use cases, and a PDF report.</li>
+        </ol>
+      </section>
+
+      <section class="mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Uploaded Documents</h2>
+          <span id="doc-count" class="text-xs font-medium text-gray-400">0 files</span>
+        </div>
+        <div id="documents-list" class="space-y-2">
+          <p id="documents-empty" class="text-sm text-gray-400 italic py-3 px-4 bg-gray-50 rounded-lg border border-dashed border-gray-200 text-center">
+            No documents yet
+          </p>
+        </div>
+      </section>
+
+      <section>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500">Assessment Progress</h2>
+          <span id="topics-progress" class="text-xs font-semibold text-[#D97706]">0 / 5 topics</span>
+        </div>
+        <div id="topics-list" class="space-y-2"></div>
+        <div class="mt-4">
+          <div class="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Overall completion</span>
+            <span id="progress-percent">0%</span>
+          </div>
+          <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div id="progress-bar" class="h-full bg-[#D97706] rounded-full transition-all duration-500" style="width: 0%"></div>
+          </div>
+        </div>
+      </section>
     </div>
-    
-    <div class="mt-8 text-sm text-gray-400">
+
+    <div class="mt-6 pt-4 border-t border-gray-100 text-xs text-gray-400">
       <p>Powered by DQ TMaaS Agent A</p>
+      <p class="mt-1 truncate" title="">Session: <span id="session-id-display" class="font-mono text-gray-500"></span></p>
     </div>
   </div>
 
   <!-- Center Panel: Chat -->
-  <div class="w-full md:w-1/3 flex flex-col bg-gray-50 border-x border-gray-200 panel" id="center-panel">
-    <div class="p-4 bg-[#0F172A] text-white flex items-center justify-between shadow-md z-20">
+  <div class="w-full flex-1 min-w-0 flex flex-col bg-gray-50 border-x border-gray-200 panel min-h-0" id="center-panel">
+    <div class="p-4 bg-[#0F172A] text-white flex items-center justify-between shadow-md z-20 shrink-0">
       <div class="flex items-center gap-3">
-        <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+        <button type="button" id="left-panel-toggle" title="Show/hide documents and progress" aria-label="Toggle sidebar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+        </button>
+        <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse" id="advisor-status-dot"></div>
         <span class="font-semibold">Senior DQ Advisor</span>
       </div>
+      <span id="chat-turns" class="text-xs text-slate-400">0 messages</span>
     </div>
-    
-    <div class="flex-1 p-4 overflow-y-auto space-y-4" id="chat-box">
-      <div class="bg-white p-3 rounded-lg rounded-tl-none shadow-sm max-w-[85%] border border-gray-100 text-gray-800">
-        Hello. I'm here to assess your AI readiness. To begin, please tell me about your primary motivation for adopting AI, or upload your strategy document on the left.
+
+    <div class="flex-1 p-4 overflow-y-auto space-y-4 min-h-0" id="chat-box">
+      <div class="flex flex-col w-full" id="welcome-message">
+        <div class="bg-white p-4 rounded-lg rounded-tl-none shadow-sm max-w-[90%] border border-gray-100 text-gray-800 text-sm leading-relaxed">
+          <p class="font-semibold text-[#0F172A] mb-2">Welcome to your AI Readiness Assessment</p>
+          <p class="mb-2">I'm a Senior DQ Advisor. I'll interview you about your organisation's readiness for AI across seven dimensions — using any documents you upload as evidence.</p>
+          <p class="text-gray-600">Upload a document on the left, or type a message below to begin. I'll ask one question at a time until we've covered all five topics, then produce your advisory.</p>
+        </div>
       </div>
     </div>
 
-    <div class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-      <form id="chat-form" class="flex gap-2 relative">
-        <input type="text" id="chat-input" class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:bg-white transition-colors" placeholder="Type your response..." autocomplete="off">
-        <button type="submit" class="bg-[#0F172A] hover:bg-[#1E293B] text-white px-5 rounded-lg transition-colors font-medium shadow-sm flex items-center gap-2" id="send-btn">
+    <div id="chat-cta" class="hidden px-4 py-3 bg-amber-50 border-t border-amber-200 text-sm text-amber-900 shrink-0">
+      <span class="font-semibold">Ready to start?</span>
+      <span id="chat-cta-text"> Your document is processed. Send a message or use a quick reply below.</span>
+    </div>
+
+    <div id="quick-replies" class="hidden px-4 py-2 bg-white border-t border-gray-100 flex flex-wrap gap-2 shrink-0">
+      <button type="button" class="quick-reply text-xs px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:border-[#D97706] hover:text-[#D97706] transition" data-message="Please begin my AI readiness assessment using my uploaded documents.">
+        Start assessment
+      </button>
+      <button type="button" class="quick-reply text-xs px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:border-[#D97706] hover:text-[#D97706] transition" data-message="Our main goal is to automate operational reporting with AI.">
+        We want to automate reporting
+      </button>
+      <button type="button" class="quick-reply text-xs px-3 py-1.5 rounded-full border border-gray-300 text-gray-700 hover:border-[#D97706] hover:text-[#D97706] transition" data-message="We haven't uploaded documents yet — please start with questions about our data landscape.">
+        No documents yet
+      </button>
+    </div>
+
+    <div class="p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] shrink-0">
+      <form id="chat-form" class="flex gap-2">
+        <input type="text" id="chat-input" class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:bg-white transition-colors text-sm" placeholder="Type here to begin the assessment…" autocomplete="off">
+        <button type="submit" class="bg-[#0F172A] hover:bg-[#1E293B] text-white px-5 rounded-lg transition-colors font-medium shadow-sm text-sm" id="send-btn">
           Send
         </button>
       </form>
     </div>
   </div>
 
-  <!-- Right Panel: Results (Hidden initially) -->
-  <div class="w-full md:w-1/3 p-6 bg-white shadow-lg overflow-y-auto panel hidden" id="right-panel">
-    <h2 class="text-2xl font-bold mb-4">Assessment Results</h2>
-    
-    <div class="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200">
-      <h3 class="text-sm font-semibold text-amber-800 uppercase mb-1">Readiness Level</h3>
-      <div class="text-2xl font-bold text-amber-900" id="res-level">--</div>
+  <!-- Right Panel: Results -->
+  <div class="hidden w-full md:w-1/2 shrink-0 p-6 bg-white shadow-lg overflow-y-auto panel" id="right-panel">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="text-2xl">✓</span>
+      <h2 class="text-2xl font-bold">Assessment Complete</h2>
+    </div>
+    <p class="text-sm text-gray-500 mb-6">Your comprehensive AI readiness advisory is ready.</p>
+
+    <div class="mb-6 p-5 rounded-xl border-2" id="res-level-card">
+      <h3 class="text-xs font-semibold uppercase tracking-wide mb-1 opacity-80">Readiness Level</h3>
+      <div class="text-3xl font-bold" id="res-level">--</div>
+      <div class="text-sm mt-2 opacity-80" id="res-strength-gap"></div>
     </div>
 
-    <div class="mb-6">
-      <h3 class="text-lg font-semibold mb-2">Narrative</h3>
-      <p class="text-gray-700 bg-gray-50 p-4 rounded-md border-l-4 border-[#0F172A]" id="res-narrative">--</p>
+    <div id="res-findings" class="mb-6 hidden"></div>
+
+    <div class="mb-4">
+      <h3 class="text-lg font-semibold mb-2">Executive Summary</h3>
+      <div class="text-gray-700 bg-gray-50 p-4 rounded-lg border-l-4 border-[#0F172A] text-sm leading-relaxed" id="res-narrative">--</div>
     </div>
 
-    <div class="mb-6">
+    <div class="mb-4">
       <h3 class="text-lg font-semibold mb-2 text-red-600">Critical Blockers</h3>
       <div id="res-blockers" class="space-y-3"></div>
     </div>
 
-    <div class="mb-6">
+    <div id="res-accordion" class="mb-6"></div>
+
+    <div class="mb-4">
       <h3 class="text-lg font-semibold mb-2 text-blue-600">Recommended First Action</h3>
-      <div class="p-4 bg-blue-50 text-blue-900 rounded-md font-medium" id="res-action">--</div>
+      <div class="p-4 bg-blue-50 text-blue-900 rounded-lg font-medium text-sm leading-relaxed" id="res-action">--</div>
     </div>
 
-    <div class="mb-8">
-      <h3 class="text-lg font-semibold mb-2 text-green-600">Viable Use Cases</h3>
-      <div id="res-usecases" class="space-y-3"></div>
-    </div>
-
-    <button id="download-pdf" class="w-full bg-[#D97706] text-white py-3 rounded-lg font-bold hover:bg-amber-600 transition shadow-md">
+    <button id="download-pdf" class="w-full bg-[#D97706] text-white py-3 rounded-lg font-bold hover:bg-amber-600 transition shadow-md sticky bottom-0">
       Download Full PDF Advisory
     </button>
   </div>
 
   <script>
+    const ASSESSMENT_TOPICS = ['Data', 'Systems', 'Use case', 'People', 'Leadership'];
+
+    const DIMENSION_LABELS = {
+      data_accessibility: 'Data Accessibility',
+      data_quality_history: 'Data Quality',
+      systems_integration: 'Systems Integration',
+      use_case_specificity: 'Use Case Specificity',
+      implementation_capability: 'Implementation Capability',
+      adoption_conditions: 'Adoption Conditions',
+      leadership_sponsorship: 'Leadership Sponsorship',
+    };
+
+    const READINESS_STYLES = {
+      'Not Ready': { card: 'bg-red-50 border-red-300 text-red-900', badge: 'bg-red-100 text-red-800' },
+      'Foundation Needed': { card: 'bg-orange-50 border-orange-300 text-orange-900', badge: 'bg-orange-100 text-orange-800' },
+      'Pilot Ready': { card: 'bg-amber-50 border-amber-300 text-amber-900', badge: 'bg-amber-100 text-amber-800' },
+      'Scale Ready': { card: 'bg-emerald-50 border-emerald-300 text-emerald-900', badge: 'bg-emerald-100 text-emerald-800' },
+    };
+
     const chatBox = document.getElementById('chat-box');
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
@@ -111,54 +286,609 @@
     const uploadStatus = document.getElementById('upload-status');
     const rightPanel = document.getElementById('right-panel');
     const leftPanel = document.getElementById('left-panel');
+    const leftPanelToggle = document.getElementById('left-panel-toggle');
+    const leftPanelBackdrop = document.getElementById('left-panel-backdrop');
     const downloadPdf = document.getElementById('download-pdf');
+    const documentsList = document.getElementById('documents-list');
+    const documentsEmpty = document.getElementById('documents-empty');
+    const topicsList = document.getElementById('topics-list');
+    const sessionIdDisplay = document.getElementById('session-id-display');
+    const chatCta = document.getElementById('chat-cta');
+    const chatCtaText = document.getElementById('chat-cta-text');
+    const quickReplies = document.getElementById('quick-replies');
+    const welcomeMessage = document.getElementById('welcome-message');
 
     let sessionId = localStorage.getItem('tmaas_session_id') || crypto.randomUUID();
+    let conversationTurns = 0;
+    let leftPanelCollapsed = false;
+    let resultsVisible = false;
     localStorage.setItem('tmaas_session_id', sessionId);
+    sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
+    sessionIdDisplay.title = sessionId;
 
-    function addMessage(text, isUser = false) {
+    const uploadedDocs = new Map();
+
+    function fileIcon(name) {
+      const ext = name.split('.').pop()?.toLowerCase();
+      if (ext === 'pdf') return '📕';
+      if (ext === 'docx') return '📘';
+      if (ext === 'pptx') return '📙';
+      return '📄';
+    }
+
+    function escapeHtml(text) {
       const div = document.createElement('div');
-      div.className = `p-3 rounded-lg shadow-sm max-w-[85%] border ${
-        isUser 
-          ? 'bg-[#0F172A] text-white self-end rounded-tr-none ml-auto border-[#0F172A]' 
-          : 'bg-white text-gray-800 self-start rounded-tl-none border-gray-100'
-      }`;
       div.textContent = text;
-      
+      return div.innerHTML;
+    }
+
+    function renderTopics(topicsCompleted = []) {
+      topicsList.innerHTML = ASSESSMENT_TOPICS.map((topic) => {
+        const done = topicsCompleted.includes(topic);
+        return `
+          <div class="flex items-center gap-3 p-2.5 rounded-lg border ${done ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-100'}">
+            <span class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${done ? 'bg-emerald-500 text-white' : 'bg-gray-200 text-gray-500'}">
+              ${done ? '✓' : ''}
+            </span>
+            <span class="text-sm font-medium ${done ? 'text-emerald-900' : 'text-gray-600'}">${topic}</span>
+          </div>
+        `;
+      }).join('');
+
+      const completed = topicsCompleted.length;
+      const percent = Math.round((completed / ASSESSMENT_TOPICS.length) * 100);
+      document.getElementById('topics-progress').textContent = `${completed} / ${ASSESSMENT_TOPICS.length} topics`;
+      document.getElementById('progress-percent').textContent = `${percent}%`;
+      document.getElementById('progress-bar').style.width = `${percent}%`;
+    }
+
+    function renderDocuments(docNames = []) {
+      docNames.forEach((name) => {
+        if (!uploadedDocs.has(name)) {
+          uploadedDocs.set(name, { evidenceCount: null, uploadedAt: new Date() });
+        }
+      });
+
+      const entries = [...uploadedDocs.entries()];
+      document.getElementById('doc-count').textContent = `${entries.length} file${entries.length === 1 ? '' : 's'}`;
+
+      if (entries.length === 0) {
+        documentsEmpty.classList.remove('hidden');
+        documentsList.querySelectorAll('.doc-item').forEach((el) => el.remove());
+        return;
+      }
+
+      documentsEmpty.classList.add('hidden');
+      documentsList.innerHTML = entries.map(([name, meta]) => `
+        <div class="doc-item flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+          <span class="text-xl shrink-0">${fileIcon(name)}</span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-gray-900 truncate" title="${escapeHtml(name)}">${escapeHtml(name)}</p>
+            <p class="text-xs text-gray-500 mt-0.5">
+              ${meta.evidenceCount != null ? `${meta.evidenceCount} evidence record${meta.evidenceCount === 1 ? '' : 's'} extracted` : 'Uploaded'}
+            </p>
+          </div>
+          <span class="shrink-0 text-emerald-500 text-sm font-bold">✓</span>
+        </div>
+      `).join('');
+    }
+
+    function updateSessionUI(session) {
+      if (!session) return;
+
+      renderDocuments(session.documentsUploaded || []);
+      renderTopics(session.topicsCompleted || []);
+
+      if (session.conversationTurns != null) {
+        conversationTurns = session.conversationTurns;
+        document.getElementById('chat-turns').textContent = `${conversationTurns} message${conversationTurns === 1 ? '' : 's'}`;
+        if (conversationTurns > 0) {
+          hideChatPrompt();
+        } else if ((session.documentsUploaded || []).length > 0) {
+          showChatPrompt(true);
+        }
+      }
+
+      const statusBadge = document.getElementById('session-status-badge');
+      const isComplete = session.status === 'completed';
+      statusBadge.textContent = isComplete ? 'Completed' : 'In Progress';
+      statusBadge.className = `shrink-0 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full ${
+        isComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+      }`;
+
+      if (session.dimensionScores && Object.keys(session.dimensionScores).length > 0) {
+        const scoresHtml = renderDimensionScores(session.dimensionScores);
+        const scoresContainer = document.getElementById('dimension-scores');
+        if (scoresContainer) scoresContainer.innerHTML = scoresHtml;
+      }
+    }
+
+    function renderDimensionScores(scores, targetId = 'dimension-scores') {
+      const container = document.getElementById(targetId);
+      if (!container) return '';
+
+      const entries = Object.entries(scores);
+      if (entries.length === 0) return '';
+
+      return entries.map(([key, score]) => {
+        const label = DIMENSION_LABELS[key] || key;
+        const pct = (Number(score) / 2) * 100;
+        const colors = score === 2 ? 'bg-emerald-500' : score === 1 ? 'bg-amber-500' : 'bg-red-400';
+        return `
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-gray-600">${label}</span>
+              <span class="font-semibold text-gray-800">${score} / 2</span>
+            </div>
+            <div class="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div class="h-full ${colors} rounded-full transition-all" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function loadSession() {
+      try {
+        const res = await fetch(`/api/session/${sessionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        updateSessionUI(data);
+        if (data.result) {
+          showResults(data.result, data);
+        } else if (data.canComplete || data.status === 'completed') {
+          try {
+            await ensureAssessmentResult();
+          } catch {
+            // Report not ready yet; keep the interview flow active.
+          }
+        }
+      } catch {
+        renderTopics();
+        renderDocuments();
+      }
+    }
+
+    async function ensureAssessmentResult() {
+      const sessionRes = await fetch(`/api/session/${sessionId}`);
+      if (!sessionRes.ok) {
+        throw new Error('Could not load session.');
+      }
+      const sessionData = await sessionRes.json();
+      if (sessionData.result) {
+        showResults(sessionData.result, sessionData);
+        return sessionData.result;
+      }
+
+      if (!sessionData.canComplete) {
+        throw new Error('Assessment is not ready to generate a report yet.');
+      }
+
+      const completeRes = await fetch(`/api/session/${sessionId}/complete`, {
+        method: 'POST',
+      });
+      const completeData = await completeRes.json();
+      if (!completeRes.ok) {
+        throw new Error(completeData.error || 'Failed to generate assessment report.');
+      }
+
+      showResults(completeData.result, completeData.session);
+      updateSessionUI(completeData.session);
+      return completeData.result;
+    }
+
+    function addSystemMessage(text) {
+      const div = document.createElement('div');
+      div.className = 'text-center';
+      div.innerHTML = `<span class="inline-block text-xs text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full">${escapeHtml(text)}</span>`;
       const wrapper = document.createElement('div');
       wrapper.className = 'flex flex-col w-full';
       wrapper.appendChild(div);
-      
       chatBox.appendChild(wrapper);
       chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    function showResults(result) {
-      document.getElementById('res-level').textContent = result.readinessLevel;
-      document.getElementById('res-narrative').textContent = result.narrative;
-      document.getElementById('res-action').textContent = result.firstAction;
-      
-      const blockersDiv = document.getElementById('res-blockers');
-      blockersDiv.innerHTML = result.blockers.map(b => 
-        `<div class="p-3 bg-red-50 border border-red-100 rounded-md">
-          <div class="font-bold text-red-800">${b.title}</div>
-          <div class="text-sm text-red-700">${b.description}</div>
-        </div>`
-      ).join('');
+    function showChatPrompt(hasDocuments = false) {
+      chatCta.classList.remove('hidden');
+      quickReplies.classList.remove('hidden');
+      chatCtaText.textContent = hasDocuments
+        ? ' Your document is processed. The advisor will use it as evidence — send a message to begin the interview.'
+        : ' Send a message below to begin the interview.';
+      chatInput.placeholder = 'Answer the advisor or type to begin…';
+      chatInput.focus();
+    }
 
-      const useCasesDiv = document.getElementById('res-usecases');
-      useCasesDiv.innerHTML = result.useCases.map(uc => 
-        `<div class="p-3 border border-gray-200 rounded-md shadow-sm">
-          <div class="font-bold text-[#0F172A]">${uc.useCase.name}</div>
-          <div class="text-sm text-gray-600 mt-1">${uc.rationale}</div>
-        </div>`
-      ).join('');
+    function hideChatPrompt() {
+      chatCta.classList.add('hidden');
+      quickReplies.classList.add('hidden');
+      chatInput.placeholder = 'Type your response…';
+    }
 
-      // Expand to 3 panels
-      leftPanel.classList.replace('md:w-1/3', 'md:w-1/4');
-      document.getElementById('center-panel').classList.replace('md:w-1/3', 'md:w-1/4');
-      rightPanel.classList.replace('md:w-1/3', 'md:w-1/2');
-      rightPanel.classList.remove('hidden');
+    function renderMarkdown(text) {
+      if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
+        marked.setOptions({ breaks: true, gfm: true });
+        const html = marked.parse(text);
+        return DOMPurify.sanitize(html, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote', 'a', 'h1', 'h2', 'h3', 'h4', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+          ALLOWED_ATTR: ['href', 'target', 'rel'],
+        });
+      }
+      return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    function addMessage(text, isUser = false) {
+      const div = document.createElement('div');
+      div.className = `p-3 rounded-lg shadow-sm max-w-[90%] border text-sm leading-relaxed ${
+        isUser
+          ? 'bg-[#0F172A] text-white self-end rounded-tr-none ml-auto border-[#0F172A]'
+          : 'bg-white text-gray-800 self-start rounded-tl-none border-gray-100 chat-markdown'
+      }`;
+
+      if (isUser) {
+        div.textContent = text;
+      } else {
+        div.innerHTML = renderMarkdown(text);
+        div.querySelectorAll('a').forEach((link) => {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        });
+      }
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col w-full';
+      wrapper.appendChild(div);
+
+      chatBox.appendChild(wrapper);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    const centerPanel = document.getElementById('center-panel');
+
+    function isMobileLayout() {
+      return window.matchMedia('(max-width: 767px)').matches;
+    }
+
+    function applyLeftPanelState() {
+      const mobile = isMobileLayout();
+      leftPanel.classList.toggle('collapsed', leftPanelCollapsed && !mobile);
+      leftPanel.classList.toggle('mobile-drawer', !leftPanelCollapsed && mobile && resultsVisible);
+      leftPanelBackdrop.classList.toggle('visible', !leftPanelCollapsed && mobile && resultsVisible);
+    }
+
+    function setResultsLayout(showResults) {
+      resultsVisible = showResults;
+      leftPanelToggle.classList.toggle('visible', showResults);
+
+      if (showResults) {
+        rightPanel.classList.remove('hidden');
+        if (leftPanelCollapsed) {
+          leftPanel.classList.add('collapsed');
+          leftPanel.classList.remove('md:w-1/4', 'md:w-1/3', 'md:max-w-md');
+          centerPanel.classList.remove('md:w-1/4', 'shrink-0');
+          centerPanel.classList.add('flex-1');
+          rightPanel.classList.remove('md:w-1/2');
+          rightPanel.classList.add('md:w-3/5', 'flex-1');
+        } else {
+          leftPanel.classList.remove('md:w-1/3', 'md:max-w-md', 'collapsed');
+          leftPanel.classList.add('md:w-1/4');
+          centerPanel.classList.remove('flex-1');
+          centerPanel.classList.add('md:w-1/4', 'shrink-0');
+          rightPanel.classList.remove('flex-1', 'md:w-3/5');
+          rightPanel.classList.add('md:w-1/2');
+        }
+      } else {
+        leftPanelCollapsed = false;
+        leftPanel.classList.remove('collapsed', 'mobile-drawer', 'md:w-1/4');
+        leftPanel.classList.add('md:w-1/3', 'md:max-w-md');
+        centerPanel.classList.remove('md:w-1/4', 'shrink-0');
+        centerPanel.classList.add('flex-1');
+        rightPanel.classList.add('hidden');
+        rightPanel.classList.remove('md:w-3/5', 'flex-1');
+        rightPanel.classList.add('md:w-1/2');
+        leftPanelBackdrop.classList.remove('visible');
+      }
+
+      applyLeftPanelState();
+    }
+
+    function toggleLeftPanel() {
+      leftPanelCollapsed = !leftPanelCollapsed;
+      setResultsLayout(true);
+    }
+
+    function createAccordionSection(title, bodyHtml, open = false) {
+      const id = `acc-${title.replace(/\W+/g, '-').toLowerCase()}`;
+      return `
+        <div class="accordion-section">
+          <button type="button" class="accordion-header" data-accordion="${id}" aria-expanded="${open}">
+            <span>${escapeHtml(title)}</span>
+            <span class="accordion-chevron text-gray-400">${open ? '−' : '+'}</span>
+          </button>
+          <div id="${id}" class="accordion-body ${open ? '' : 'hidden'}">${bodyHtml}</div>
+        </div>
+      `;
+    }
+
+    function bindAccordions() {
+      document.querySelectorAll('.accordion-header').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const targetId = btn.getAttribute('data-accordion');
+          const body = document.getElementById(targetId);
+          const chevron = btn.querySelector('.accordion-chevron');
+          const isOpen = !body.classList.contains('hidden');
+          body.classList.toggle('hidden', isOpen);
+          btn.setAttribute('aria-expanded', String(!isOpen));
+          if (chevron) chevron.textContent = isOpen ? '+' : '−';
+        });
+      });
+    }
+
+    function renderDetailedBlockers(blockers) {
+      if (!blockers?.length) return '<p class="text-gray-500 italic">No detailed blockers available.</p>';
+      return blockers.map((b) => `
+        <div class="p-3 bg-red-50 border border-red-100 rounded-lg mb-3 last:mb-0">
+          <div class="font-semibold text-red-800 text-sm">${escapeHtml(b.title)}</div>
+          <div class="text-xs text-red-700 mt-2 space-y-1">
+            <div><strong>Severity:</strong> ${escapeHtml(b.severity)}</div>
+            <div><strong>Root cause:</strong> ${escapeHtml(b.rootCause)}</div>
+            <div><strong>Impact:</strong> ${escapeHtml(b.businessImpact)}</div>
+            <div><strong>Resolution:</strong> ${escapeHtml(b.resolutionPathway)}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDimensionAnalyses(analyses) {
+      if (!analyses?.length) return '<p class="text-gray-500 italic">No dimension analysis available.</p>';
+      return analyses.map((a) => {
+        const label = DIMENSION_LABELS[a.dimension] || a.dimension;
+        return `
+          <div class="mb-4 last:mb-0 pb-4 border-b border-gray-100 last:border-0">
+            <div class="font-semibold text-sm text-[#0F172A] mb-1">${escapeHtml(label)}${a.confidence ? ` <span class="text-xs text-gray-500">(${escapeHtml(a.confidence)} confidence)</span>` : ''}</div>
+            <div class="text-xs text-gray-600 space-y-1">
+              <div><strong>Evidence:</strong> ${escapeHtml(a.evidence)}</div>
+              <div><strong>Gaps:</strong> ${escapeHtml(a.gaps)}</div>
+              <div><strong>Impact:</strong> ${escapeHtml(a.deploymentImpact)}</div>
+              ${a.recommendedActions?.length ? `<div><strong>Actions:</strong> ${a.recommendedActions.map(escapeHtml).join('; ')}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderUseCases(useCases) {
+      return useCases.map((uc) => `
+        <div class="p-3 border border-gray-200 rounded-lg shadow-sm mb-3 last:mb-0">
+          <div class="font-semibold text-[#0F172A] text-sm">${escapeHtml(uc.useCase.name)}</div>
+          <div class="text-xs text-gray-500 mt-1">${escapeHtml(uc.useCase.min_readiness_level)} · ${escapeHtml(uc.useCase.implementation_complexity)} · ${escapeHtml(uc.useCase.cost_band_indicative)}</div>
+          <div class="text-sm text-gray-600 mt-2 leading-relaxed">${escapeHtml(uc.rationale)}</div>
+          ${uc.details ? `
+            <div class="text-xs text-gray-600 mt-2 space-y-1">
+              <div><strong>Description:</strong> ${escapeHtml(uc.details.description)}</div>
+              <div><strong>Data:</strong> ${escapeHtml(uc.details.dataRequirements)}</div>
+              <div><strong>Risks:</strong> ${(uc.details.keyRisks || []).map(escapeHtml).join('; ')}</div>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    function renderRoadmap(roadmap) {
+      if (!roadmap?.length) return '<p class="text-gray-500 italic">No roadmap available.</p>';
+      return `<div class="space-y-2">${roadmap.map((item) => `
+        <div class="p-2 rounded border border-gray-100 text-xs">
+          <div class="font-semibold text-gray-800">${escapeHtml(item.horizon)} · ${escapeHtml(item.timeline)}</div>
+          <div class="text-gray-600 mt-1">${escapeHtml(item.action)}</div>
+          <div class="text-gray-400 mt-0.5">Owner: ${escapeHtml(item.owner)}</div>
+        </div>
+      `).join('')}</div>`;
+    }
+
+    function renderRisksAndAssumptions(extended) {
+      if (!extended) return '<p class="text-gray-500 italic">No risks data available.</p>';
+      const assumptions = (extended.assumptions || []).map((a) => `<li>${escapeHtml(a)}</li>`).join('');
+      const risks = (extended.risks || []).map((r) => `
+        <div class="p-2 border border-gray-100 rounded text-xs mb-2">
+          <div class="font-medium">${escapeHtml(r.risk)}</div>
+          <div class="text-gray-500">${escapeHtml(r.likelihood)} likelihood · ${escapeHtml(r.impact)} impact</div>
+          <div class="text-gray-600 mt-1">${escapeHtml(r.mitigation)}</div>
+        </div>
+      `).join('');
+      return `
+        ${assumptions ? `<div class="mb-3"><div class="font-semibold text-xs mb-1">Assumptions</div><ul class="list-disc list-inside text-xs text-gray-600">${assumptions}</ul></div>` : ''}
+        ${risks ? `<div class="font-semibold text-xs mb-1">Risks</div>${risks}` : ''}
+        ${extended.constraints ? `<div class="mt-3 text-xs text-gray-600"><strong>Constraints:</strong> ${escapeHtml(extended.constraints)}</div>` : ''}
+      `;
+    }
+
+    function renderNextSteps(nextSteps) {
+      if (!nextSteps?.length) return '<p class="text-gray-500 italic">See recommended first action above.</p>';
+      return nextSteps.map((step) => `
+        <div class="mb-3 last:mb-0">
+          <div class="font-semibold text-xs text-gray-800">${escapeHtml(step.label)}</div>
+          <div class="text-xs text-gray-600 mt-1">${escapeHtml(step.action)}</div>
+        </div>
+      `).join('');
+    }
+
+    function showResults(result, session) {
+      const level = result.readinessLevel;
+      const styles = READINESS_STYLES[level] || READINESS_STYLES['Foundation Needed'];
+      const extended = result.extendedReport;
+
+      const levelCard = document.getElementById('res-level-card');
+      levelCard.className = `mb-6 p-5 rounded-xl border-2 ${styles.card}`;
+      document.getElementById('res-level').textContent = level;
+
+      const strengthGap = document.getElementById('res-strength-gap');
+      if (extended?.executiveSummary) {
+        strengthGap.textContent = `Strength: ${extended.executiveSummary.primaryStrength} · Gap: ${extended.executiveSummary.primaryGap}`;
+      } else {
+        strengthGap.textContent = '';
+      }
+
+      const findingsEl = document.getElementById('res-findings');
+      if (extended?.findings) {
+        findingsEl.classList.remove('hidden');
+        findingsEl.innerHTML = `
+          <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm space-y-3">
+            <div><div class="font-semibold text-xs uppercase text-gray-500 mb-1">What we believe</div><ul class="list-disc list-inside text-gray-700">${extended.findings.believed.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>
+            <div><div class="font-semibold text-xs uppercase text-gray-500 mb-1">Uncertain</div><ul class="list-disc list-inside text-gray-700">${extended.findings.uncertain.map((i) => `<li>${escapeHtml(i)}</li>`).join('')}</ul></div>
+            <div class="text-gray-700"><strong>Biggest risk:</strong> ${escapeHtml(extended.findings.biggestRisk)}</div>
+          </div>
+        `;
+      } else {
+        findingsEl.classList.add('hidden');
+        findingsEl.innerHTML = '';
+      }
+
+      document.getElementById('res-narrative').innerHTML = renderMarkdown(result.narrative);
+      document.getElementById('res-action').innerHTML = renderMarkdown(result.firstAction);
+
+      const blockers = extended?.detailedBlockers?.length ? extended.detailedBlockers : result.blockers;
+      document.getElementById('res-blockers').innerHTML = blockers.length
+        ? (extended?.detailedBlockers?.length
+          ? renderDetailedBlockers(extended.detailedBlockers)
+          : result.blockers.map((b) => `
+              <div class="p-3 bg-red-50 border border-red-100 rounded-lg">
+                <div class="font-semibold text-red-800 text-sm">${escapeHtml(b.title)}</div>
+                <div class="text-sm text-red-700 mt-1 leading-relaxed">${escapeHtml(b.description)}</div>
+              </div>
+            `).join(''))
+        : '<p class="text-sm text-gray-500 italic">No critical blockers identified.</p>';
+
+      const accordionParts = [];
+      if (session?.dimensionScores) {
+        accordionParts.push(createAccordionSection(
+          'Dimension Scores',
+          `<div class="space-y-2" id="dimension-scores">${renderDimensionScores(session.dimensionScores)}</div>`,
+          false,
+        ));
+      }
+      if (extended?.dimensionAnalyses?.length) {
+        accordionParts.push(createAccordionSection('Dimension Analysis', renderDimensionAnalyses(extended.dimensionAnalyses), false));
+      }
+      accordionParts.push(createAccordionSection('Recommended Use Cases', renderUseCases(result.useCases), false));
+      if (extended?.roadmap?.length) {
+        accordionParts.push(createAccordionSection('Roadmap', renderRoadmap(extended.roadmap), false));
+      }
+      if (extended) {
+        accordionParts.push(createAccordionSection('Risks & Assumptions', renderRisksAndAssumptions(extended), false));
+      }
+      if (extended?.nextSteps?.length) {
+        accordionParts.push(createAccordionSection('Next Steps', renderNextSteps(extended.nextSteps), false));
+      }
+
+      document.getElementById('res-accordion').innerHTML = accordionParts.join('');
+      bindAccordions();
+
+      leftPanelCollapsed = true;
+      setResultsLayout(true);
+      updateSessionUI({ ...session, status: 'completed', topicsCompleted: ASSESSMENT_TOPICS });
+    }
+
+    function setUploadStatus(message, type = 'info') {
+      uploadStatus.textContent = message;
+      uploadStatus.classList.remove('hidden', 'text-red-600', 'text-emerald-700', 'text-[#D97706]');
+      if (type === 'error') uploadStatus.classList.add('text-red-600');
+      else if (type === 'success') uploadStatus.classList.add('text-emerald-700');
+      else uploadStatus.classList.add('text-[#D97706]');
+    }
+
+    async function uploadFile(file) {
+      setUploadStatus('Uploading and extracting evidence…');
+
+      const formData = new FormData();
+      formData.append('document', file);
+      formData.append('sessionId', sessionId);
+
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Upload failed');
+      }
+
+      if (data.sessionId && data.sessionId !== sessionId) {
+        sessionId = data.sessionId;
+        localStorage.setItem('tmaas_session_id', sessionId);
+        sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
+        sessionIdDisplay.title = sessionId;
+      }
+
+      uploadedDocs.set(data.fileName, {
+        evidenceCount: data.evidenceCount,
+        uploadedAt: new Date(),
+      });
+
+      renderDocuments(data.documentsUploaded || [data.fileName]);
+      setUploadStatus(`✓ ${data.fileName} — ${data.evidenceSummary}`, 'success');
+
+      if (conversationTurns === 0) {
+        addSystemMessage(`${data.evidenceCount} evidence signals extracted from "${data.fileName}". Starting assessment interview…`);
+        await sendChatMessage(
+          'Please begin my AI readiness assessment. Use the documents I uploaded as evidence.',
+          { showUserMessage: false },
+        );
+      } else {
+        addSystemMessage(`"${data.fileName}" uploaded — ${data.evidenceCount} evidence signals extracted.`);
+        showChatPrompt(true);
+      }
+    }
+
+    async function sendChatMessage(message, { showUserMessage = true } = {}) {
+      if (showUserMessage) {
+        addMessage(message, true);
+      }
+      hideChatPrompt();
+      welcomeMessage?.remove();
+
+      chatInput.disabled = true;
+      sendBtn.textContent = '…';
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message, sessionId }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Chat request failed');
+        }
+
+        if (data.sessionId && data.sessionId !== sessionId) {
+          sessionId = data.sessionId;
+          localStorage.setItem('tmaas_session_id', sessionId);
+          sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
+          sessionIdDisplay.title = sessionId;
+        }
+
+        if (data.session) {
+          updateSessionUI(data.session);
+        }
+
+        if (data.response) {
+          addMessage(data.response, false);
+        }
+
+        if (data.result) {
+          showResults(data.result, data.session);
+        } else if (data.assessmentComplete) {
+          try {
+            await ensureAssessmentResult();
+          } catch (err) {
+            addMessage(err.message || 'Assessment completed, but the report could not be loaded.', false);
+          }
+        }
+      } catch (err) {
+        addMessage(err.message || 'Error communicating with advisor.', false);
+      } finally {
+        chatInput.disabled = false;
+        sendBtn.textContent = 'Send';
+        chatInput.focus();
+      }
     }
 
     chatForm.addEventListener('submit', async (e) => {
@@ -166,64 +896,81 @@
       const message = chatInput.value.trim();
       if (!message) return;
 
-      addMessage(message, true);
       chatInput.value = '';
-      chatInput.disabled = true;
-      sendBtn.textContent = '...';
+      await sendChatMessage(message);
+    });
 
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, sessionId })
-        });
-        const data = await res.json();
-        
-        if (data.response) {
-          addMessage(data.response, false);
-        }
-
-        if (data.assessmentComplete && data.result) {
-          showResults(data.result);
-        }
-      } catch (err) {
-        addMessage('Error communicating with advisor.', false);
-      } finally {
-        chatInput.disabled = false;
-        sendBtn.textContent = 'Send';
-        chatInput.focus();
-      }
+    document.querySelectorAll('.quick-reply').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const message = btn.getAttribute('data-message');
+        if (!message) return;
+        chatInput.value = '';
+        await sendChatMessage(message);
+      });
     });
 
     uploadZone.addEventListener('click', () => fileInput.click());
-    
-    fileInput.addEventListener('change', async () => {
-      const file = fileInput.files[0];
+
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('upload-zone-active');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('upload-zone-active');
+    });
+
+    uploadZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('upload-zone-active');
+      const file = e.dataTransfer?.files?.[0];
       if (!file) return;
-
-      uploadStatus.textContent = 'Uploading and extracting...';
-      uploadStatus.classList.remove('hidden');
-
-      const formData = new FormData();
-      formData.append('document', file);
-      formData.append('sessionId', sessionId);
-
       try {
-        const res = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        uploadStatus.textContent = `Success: ${data.evidenceSummary}`;
-        setTimeout(() => uploadStatus.classList.add('hidden'), 5000);
+        await uploadFile(file);
       } catch (err) {
-        uploadStatus.textContent = 'Upload failed.';
-        uploadStatus.classList.add('text-red-600');
+        setUploadStatus(err.message || 'Upload failed.', 'error');
       }
     });
 
-    downloadPdf.addEventListener('click', () => {
-      window.open(`/api/report/${sessionId}`, '_blank');
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      fileInput.value = '';
+      try {
+        await uploadFile(file);
+      } catch (err) {
+        setUploadStatus(err.message || 'Upload failed.', 'error');
+      }
+    });
+
+    downloadPdf.addEventListener('click', async () => {
+      try {
+        downloadPdf.disabled = true;
+        downloadPdf.textContent = 'Preparing PDF…';
+        await ensureAssessmentResult();
+        window.open(`/api/report/${sessionId}`, '_blank');
+      } catch (err) {
+        addMessage(err.message || 'Could not prepare the PDF report.', false);
+      } finally {
+        downloadPdf.disabled = false;
+        downloadPdf.textContent = 'Download Full PDF Advisory';
+      }
+    });
+
+    leftPanelToggle.addEventListener('click', toggleLeftPanel);
+    leftPanelBackdrop.addEventListener('click', () => {
+      leftPanelCollapsed = true;
+      setResultsLayout(true);
+    });
+    window.addEventListener('resize', () => {
+      if (resultsVisible) applyLeftPanelState();
+    });
+
+    renderTopics();
+    loadSession().then(() => {
+      if (conversationTurns === 0) {
+        quickReplies.classList.remove('hidden');
+      }
     });
   </script>
 </body>

@@ -1,6 +1,13 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { getEnv, isLlmEnabled } from './env';
 
+type DeepSeekChatModel = {
+  invoke(input: unknown): Promise<unknown>;
+  bindTools?(tools: unknown[]): {
+    invoke(input: unknown): Promise<unknown>;
+  };
+};
+
 export function isAgentLlmEnabled(): boolean {
   return isLlmEnabled();
 }
@@ -8,7 +15,7 @@ export function isAgentLlmEnabled(): boolean {
 export function createDeepSeekLlm(options: {
   temperature?: number;
   maxTokens?: number;
-} = {}): ChatOpenAI {
+} = {}): DeepSeekChatModel {
   const env = getEnv();
   const apiKey = env.DEEPSEEK_API_KEY.trim();
 
@@ -16,8 +23,11 @@ export function createDeepSeekLlm(options: {
     throw new Error('DEEPSEEK_API_KEY is required.');
   }
 
-  return new ChatOpenAI({
-    model: env.DEEPSEEK_MODEL,
+  const OpenAICompatibleChat = ChatOpenAI as unknown as {
+    new (model: string, fields: Record<string, unknown>): DeepSeekChatModel;
+  };
+
+  return new OpenAICompatibleChat(env.DEEPSEEK_MODEL, {
     apiKey,
     openAIApiKey: apiKey,
     temperature: options.temperature ?? env.AGENT_TEMPERATURE,

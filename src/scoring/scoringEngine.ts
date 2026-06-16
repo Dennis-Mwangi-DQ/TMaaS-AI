@@ -1,4 +1,4 @@
-import type { EvidenceRecord, DimensionScores, ReadinessLevel, DimensionName } from '../types';
+import type { EvidenceRecord, DimensionScores, ReadinessLevel } from '../types';
 import { DimensionNames } from '../types';
 
 export function scoreDimensions(
@@ -12,7 +12,7 @@ export function scoreDimensions(
     
     // Check conversation signals first (agent overrides)
     if (dimension in conversationSignals) {
-      rawScore = conversationSignals[dimension];
+      rawScore = conversationSignals[dimension] ?? 0;
     } else {
       // Fallback to evidence scoring (simple heuristic: more evidence = higher score, 
       // but in reality we need the LLM to output a signal, or we map qualities to scores)

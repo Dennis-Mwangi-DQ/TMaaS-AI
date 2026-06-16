@@ -2,12 +2,11 @@ import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
 import { getOrCreateSession, updateSession } from '../memory/sessionManager';
 import { fetchEvidenceContext } from './agent-session';
-import { scoreDimensions, determineReadinessLevel } from '../scoring/scoringEngine';
-import { generateAssessmentOutput } from '../output/outputGenerator';
+import { runCompleteAssessment } from '../assessment/completeAssessment';
 import { DimensionNames } from '../types';
 
 export const getEvidenceContextTool = tool(
-  async ({ sessionId }) => {
+  async ({ sessionId }: { sessionId: string }) => {
     const evidence = await fetchEvidenceContext(sessionId);
     return JSON.stringify(evidence);
   },
@@ -21,25 +20,36 @@ export const getEvidenceContextTool = tool(
 );
 
 export const recordDimensionSignalTool = tool(
-  async ({ sessionId, dimension, score }) => {
+  async ({
+    sessionId,
+    dimension,
+    score,
+    evidence,
+  }: {
+    sessionId: string;
+    dimension: (typeof DimensionNames.options)[number];
+    score: 0 | 1 | 2;
+    evidence: string;
+  }) => {
     const session = await getOrCreateSession(sessionId);
     const scores = { ...(session.dimensionScores || {}), [dimension]: score };
     await updateSession(sessionId, { dimensionScores: scores as any });
-    return `Recorded score ${score} for dimension ${dimension}`;
+    return `Recorded score ${score} for dimension ${dimension}. Evidence: ${evidence}`;
   },
   {
     name: 'record_dimension_signal',
-    description: 'Record a score (0, 1, or 2) for a specific readiness dimension based on the conversation.',
+    description: 'Record a score (0, 1, or 2) for a specific readiness dimension. Requires explicit evidence from the respondent.',
     schema: z.object({
       sessionId: z.string(),
       dimension: DimensionNames,
       score: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+      evidence: z.string().describe('Direct quote or paraphrase from the user supporting this score'),
     }),
   }
 );
 
 export const flagInconsistencyTool = tool(
-  async ({ sessionId, description }) => {
+  async ({ description }: { sessionId: string; description: string }) => {
     return `Inconsistency flagged: ${description}. Please confront the user about this.`;
   },
   {
@@ -53,7 +63,13 @@ export const flagInconsistencyTool = tool(
 );
 
 export const checkTopicCoverageTool = tool(
-  async ({ sessionId, completedTopic }) => {
+  async ({
+    sessionId,
+    completedTopic,
+  }: {
+    sessionId: string;
+    completedTopic?: 'Data' | 'Systems' | 'Use case' | 'People' | 'Leadership';
+  }) => {
     const session = await getOrCreateSession(sessionId);
     let topics = session.topicsCompleted;
     if (completedTopic && !topics.includes(completedTopic)) {
@@ -66,7 +82,7 @@ export const checkTopicCoverageTool = tool(
   },
   {
     name: 'check_topic_coverage',
-    description: 'Mark a topic as completed and check which topics are remaining.',
+    description: 'Mark a topic as completed when you have sufficient depth (not just a mention) and check which topics remain.',
     schema: z.object({
       sessionId: z.string(),
       completedTopic: z.enum(['Data', 'Systems', 'Use case', 'People', 'Leadership']).optional(),
@@ -75,31 +91,17 @@ export const checkTopicCoverageTool = tool(
 );
 
 export const completeAssessmentTool = tool(
-  async ({ sessionId }) => {
-    const session = await getOrCreateSession(sessionId);
-    const evidence = await fetchEvidenceContext(sessionId);
-    
-    // Fallback scoring for missing dimensions
-    const finalScores = scoreDimensions(evidence, (session.dimensionScores as any) || {});
-    const readinessLevel = determineReadinessLevel(finalScores);
-    
-    await updateSession(sessionId, { 
-      dimensionScores: finalScores,
-      readinessLevel,
-      status: 'completed'
-    });
+  async ({ sessionId }: { sessionId: string }) => {
+    const result = await runCompleteAssessment(sessionId);
 
-    const sessionUpdated = await getOrCreateSession(sessionId);
-    const result = await generateAssessmentOutput(sessionUpdated, evidence);
-    
     return JSON.stringify({
       status: 'assessment_completed',
-      result
+      result,
     });
   },
   {
     name: 'complete_assessment',
-    description: 'Call this when all 5 topics have been covered and you have recorded all dimension signals. This will compute the final readiness score and generate the advisory report.',
+    description: 'REQUIRED to finish the assessment. Call when all 5 topics are covered with sufficient depth and dimension signals are recorded. Generates the advisory report shown in the right panel and PDF download.',
     schema: z.object({
       sessionId: z.string(),
     }),

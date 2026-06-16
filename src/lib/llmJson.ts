@@ -1,9 +1,16 @@
-import type { BaseMessage } from "@langchain/core/messages";
 import type { z } from "zod";
 
-function messageContentToText(content: BaseMessage["content"]): string {
+type MessageWithContent = {
+  content?: string | Array<string | { text?: unknown } | Record<string, unknown>>;
+};
+
+function messageContentToText(content: MessageWithContent["content"]): string {
   if (typeof content === "string") {
     return content;
+  }
+
+  if (!Array.isArray(content)) {
+    return "";
   }
 
   return content
@@ -71,10 +78,10 @@ export function parseJsonObject(text: string): unknown {
   }
 }
 export async function invokeJson<T>(
-  llm: { invoke(input: string): Promise<BaseMessage> },
+  llm: { invoke(input: string): Promise<unknown> },
   prompt: string,
   schema: z.ZodType<T>,
 ): Promise<T> {
   const response = await llm.invoke(prompt);
-  return schema.parse(parseJsonObject(messageContentToText(response.content)));
+  return schema.parse(parseJsonObject(messageContentToText((response as MessageWithContent).content)));
 }

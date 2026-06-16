@@ -1,32 +1,31 @@
-# Browz Concierge Agent
+# TMaaS AI Readiness Agent
 
-TypeScript/Express backend for the Browz Booking Concierge AI Agent.
+TypeScript/Express backend for the TMaaS Agent A AI readiness assessment prototype.
 
 ## Architecture
 
-Production chat uses a single LangChain agent (`runAgent` in `src/agent/agent.ts`):
+Production chat uses a LangChain tool-calling agent in `src/agent/agent.ts`:
 
-1. `createAgentLlm()` creates a DeepSeek chat client from `DEEPSEEK_*` environment variables
-2. Tools are bound with Zod schemas (`src/agent/tools.ts`)
-3. A ReAct loop invokes tools and returns `ToolMessage` results until the model produces a final answer
-4. Session context (`lastService`, `lastBranch`, `lastBookingRef`) is persisted on the session
+1. `createAgentLlm()` creates a DeepSeek chat client from `DEEPSEEK_*` environment variables.
+2. TMaaS assessment tools are bound from `src/agent/tools.ts`.
+3. The agent records dimension signals, checks topic coverage, reads uploaded evidence, and completes the assessment.
+4. Session state is persisted to `assessment_sessions` when Supabase is configured, with in-memory state used as a local fallback.
 
+```text
+POST /api/chat -> runAgent -> bindTools -> tool loop -> JSON response
 ```
-POST /api/chat  →  runAgent  →  bindTools  →  tool loop  →  JSON response
-```
 
-## What is included
+## What Is Included
 
-- Express server with `/health`, `/api/chat`, `/api/upload`, and `/api/report`
-- LangChain agent with native tool calling, gate checks, and persisted session context
-- DeepSeek-only chat configuration
-- FAQ lookup with text matching fallback
-- Tool layer for availability, bookings, consultations, screenings, clearances, notes, payments, and FAQs
-- Supabase-backed catalog, availability, and FAQ tools
-- Slot generator scripts for Supabase maintenance
-- Vitest tests for `runAgent` and tools
+- Express server with `/health`, `/api/chat`, `/api/upload`, and `/api/report`.
+- Document ingestion for PDF, DOCX, and PPTX uploads.
+- Evidence extraction prompts and assessment prompts under `prompts/`.
+- Deterministic readiness scoring in `src/scoring/scoringEngine.ts`.
+- Use-case matching from `data/use_cases.json`.
+- HTML-to-PDF advisory report generation through `src/report/reportBuilder.ts`.
+- Vitest coverage for scoring and use-case matching.
 
-## Quick start
+## Quick Start
 
 1. Install dependencies:
 
@@ -40,66 +39,46 @@ npm install
 cp .env.example .env
 ```
 
-3. Configure DeepSeek:
+3. Configure DeepSeek and, optionally, Supabase:
 
 ```text
 DEEPSEEK_API_KEY=your_deepseek_key
 DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_BASE_URL=https://api.deepseek.com
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-4. Build and start:
+4. Run the TMaaS schema if using Supabase:
+
+```bash
+psql "$DATABASE_URL" -f src/db/schema.sql
+```
+
+5. Build and start:
 
 ```bash
 npm run build
 npm run dev
 ```
 
-Open `http://localhost:3000` for the local dev chat UI (`public/`). Railway runs API-only in production — the `public/` folder is removed at deploy time and not served when `NODE_ENV=production`.
-
-## LLM configuration
-
-The app is configured for DeepSeek only:
-
-```text
-DEEPSEEK_API_KEY=your_deepseek_key
-DEEPSEEK_MODEL=deepseek-v4-flash
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-```
-
-## Health check
-
-`GET /health` returns the active DeepSeek configuration:
-
-```json
-{
-  "status": "ok",
-  "service": "TMaaS AI Readiness Agent",
-  "llm": {
-    "provider": "deepseek",
-    "model": "deepseek-v4-flash",
-    "baseUrl": "https://api.deepseek.com",
-    "enabled": true
-  },
-  "embeddings": { "provider": "none", "model": null }
-}
-```
-
-Returns HTTP 503 when `DEEPSEEK_API_KEY` is not configured.
+Open `http://localhost:3000` for the local assessment UI.
 
 ## API
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | API index (production) or dev chat UI (local) |
+| --- | --- | --- |
 | `/health` | GET | Service and LLM health |
-| `/chat` | POST | Web chat — `{ message, sessionId?, authToken? }` |
-| `/whatsapp` | POST | Twilio webhook |
+| `/api/chat` | POST | Assessment chat: `{ "message": "...", "sessionId": "uuid" }`. Returns `response` as **Markdown** (render on the client), plus `session`, `assessmentComplete`, and `result` when done. |
+| `/api/session/:sessionId` | GET | Session snapshot: documents, topics completed, status, scores |
+| `/api/upload` | POST | Multipart document upload with field `document` |
+| `/api/report/:sessionId` | GET | PDF advisory report for a completed assessment |
 
-## Notes
+## Verification
 
-- All runtime data (services, branches, slots, FAQs, bookings) comes from Supabase — there is no in-code demo fallback.
-- FAQ vector search is disabled in the DeepSeek-only setup; FAQ lookup falls back to text matching.
-- Session `agentContext` (service/branch/booking focus) persists to Supabase when configured.
-- For production, run [supabase/schema.sql](supabase/schema.sql), load your data into Supabase, then run `npm run seed:generate-slots` / `npm run seed:generate-embeddings` as needed.
-- Historical design notes live in [browz-agent-backend-plan.md](browz-agent-backend-plan.md); the live agent is `runAgent`, not the removed pipeline.
+```bash
+npm test
+npm run build
+```
+
+The sample evidence pack in `sample_uploads/` can be used to exercise the upload and assessment flow locally.

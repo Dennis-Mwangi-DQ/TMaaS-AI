@@ -29,11 +29,12 @@ CREATE TABLE IF NOT EXISTS evidence_records (
 
 CREATE TABLE IF NOT EXISTS assessment_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID REFERENCES assessment_sessions(id) ON DELETE CASCADE,
+    session_id UUID REFERENCES assessment_sessions(id) ON DELETE CASCADE UNIQUE,
     readiness_level TEXT NOT NULL,
     narrative TEXT NOT NULL,
     blockers JSONB NOT NULL,
     use_cases JSONB NOT NULL,
     first_action TEXT NOT NULL,
+    extended_report JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
