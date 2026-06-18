@@ -14,6 +14,10 @@ import {
   isAssessmentReadyForCompletion,
   runCompleteAssessment,
 } from '../assessment/completeAssessment';
+import {
+  buildProvisionalAssessmentResponse,
+  isProvisionalAssessmentRequest,
+} from '../assessment/provisionalAssessment';
 import { appendTurn, getOrCreateSession } from '../memory/sessionManager';
 import { AssessmentResultSchema } from '../types';
 import { fetchEvidenceContext } from './agent-session';
@@ -80,7 +84,9 @@ function stringifyToolOutput(output: unknown): string {
 
 function renderSystemPrompt(params: {
   sessionId: string;
+  profile: string;
   topicsCovered: string;
+  dimensionSignals: string;
   evidence: string;
 }): string {
   const promptTpl = fs.readFileSync(
@@ -89,7 +95,9 @@ function renderSystemPrompt(params: {
   );
 
   return promptTpl
+    .replace('{{SESSION_PROFILE}}', params.profile)
     .replace('{{TOPICS_COVERED}}', params.topicsCovered)
+    .replace('{{DIMENSION_SIGNALS}}', params.dimensionSignals)
     .replace('{{EVIDENCE}}', params.evidence)
     .concat(`\n\nCurrent Session ID:\n${params.sessionId}`);
 }
@@ -180,7 +188,29 @@ export async function runAgent(
 ): Promise<AgentRunResult> {
   const session = await getOrCreateSession(sessionId);
   const resolvedSessionId = session.sessionId;
-  const evidence = await fetchEvidenceContext(resolvedSessionId);
+  let evidence = await fetchEvidenceContext(resolvedSessionId);
+
+  if (
+    session.status !== 'completed' &&
+    isProvisionalAssessmentRequest(message)
+  ) {
+    const response = buildProvisionalAssessmentResponse(session, evidence);
+    await appendTurn(resolvedSessionId, {
+      role: 'user',
+      content: message,
+      timestamp: new Date().toISOString(),
+    });
+    await appendTurn(resolvedSessionId, {
+      role: 'agent',
+      content: response,
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      response,
+      assessmentComplete: false,
+    };
+  }
 
   const history = session.conversationHistory.map<LangChainMessage>((turn) =>
     turn.role === 'user'
@@ -189,9 +219,21 @@ export async function runAgent(
   );
 
   const topicsCovered = session.topicsCompleted.join(', ') || 'None';
+  const profile = JSON.stringify({
+    respondentName: session.respondentName ?? null,
+    organisation: session.organisation ?? null,
+    organisationSize: session.organisationSize ?? null,
+    sector: session.sector ?? null,
+    respondentRole: session.respondentRole ?? null,
+    primaryUseCase: session.primaryUseCase ?? null,
+  });
+  const dimensionSignals = JSON.stringify(session.dimensionScores ?? {});
   const evidenceStr = JSON.stringify(
     evidence.map((record) => ({
       dimension: record.dimension,
+      source: record.source,
+      quality: record.quality,
+      text: record.extractedText,
       meaning: record.agentInterpretation,
     })),
   );
@@ -200,7 +242,9 @@ export async function runAgent(
     new SystemMessage(
       renderSystemPrompt({
         sessionId: resolvedSessionId,
+        profile,
         topicsCovered,
+        dimensionSignals,
         evidence: evidenceStr,
       }),
     ),
@@ -243,6 +287,7 @@ export async function runAgent(
 
   let parsedResult = resolveAssessmentResult(response, toolOutputs);
   let completedSession = await getOrCreateSession(resolvedSessionId);
+  evidence = await fetchEvidenceContext(resolvedSessionId);
 
   if (!parsedResult) {
     parsedResult = await fetchAssessmentResult(resolvedSessionId);

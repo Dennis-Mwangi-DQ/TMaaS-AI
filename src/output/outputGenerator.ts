@@ -148,8 +148,12 @@ function buildContextVars(
 
   return {
     READINESS_LEVEL: session.readinessLevel || 'Unknown',
+    RESPONDENT_NAME: session.respondentName || 'Not specified',
     ORGANISATION: session.organisation || 'Not specified',
+    ORGANISATION_SIZE: session.organisationSize || 'Not specified',
     SECTOR: session.sector || 'Not specified',
+    RESPONDENT_ROLE: session.respondentRole || 'Not specified',
+    PRIMARY_USE_CASE: session.primaryUseCase || 'Not specified',
     DIMENSION_SCORES: JSON.stringify(session.dimensionScores, null, 2),
     EVIDENCE: JSON.stringify(
       evidence.map((e) => ({
@@ -180,7 +184,11 @@ function buildFallbackDimensionAnalyses(
 ) {
   const scores = session.dimensionScores ?? {};
   return DIMENSION_ORDER.map((dimension) => {
-    const match = evidence.find((record) => record.dimension === dimension);
+    const matches = evidence.filter((record) => record.dimension === dimension);
+    const match =
+      matches.find((record) => record.source === 'CONVERSATION') ??
+      matches.find((record) => record.quality === 'DOCUMENTED') ??
+      matches[0];
     const score = scores[dimension] ?? 0;
     return {
       dimension,
@@ -206,8 +214,12 @@ async function generateFallbackAssessmentOutput(
   evidence: EvidenceRecord[],
 ): Promise<AssessmentResult> {
   const llm = createDeepSeekLlm({ temperature: 0.2 });
-  const useCases = matchUseCases(session.sector || 'All', session.readinessLevel!);
   const ctx = buildContextVars(session, evidence);
+  const useCases = matchUseCases(session.sector || 'All', session.readinessLevel!, {
+    problemStatement: session.primaryUseCase,
+    conversation: ctx.CONVERSATION,
+    maxResults: 2,
+  });
   const sessionEvidence = buildSessionEvidence(session, evidence);
 
   const narrativePrompt = fillPrompt(loadPrompt('blocker_narrative.md'), ctx).concat(
@@ -293,8 +305,12 @@ export async function generateAssessmentOutput(
     throw new Error('Readiness level and dimension scores must be computed before generating output.');
   }
 
-  const useCases = matchUseCases(session.sector || 'All', session.readinessLevel);
   const ctx = buildContextVars(session, evidence);
+  const useCases = matchUseCases(session.sector || 'All', session.readinessLevel, {
+    problemStatement: session.primaryUseCase,
+    conversation: ctx.CONVERSATION,
+    maxResults: 2,
+  });
   const sessionEvidence = buildSessionEvidence(session, evidence);
 
   const narrativePrompt = fillPrompt(loadPrompt('blocker_narrative.md'), ctx).concat(
@@ -361,9 +377,12 @@ Include no more than 3 blockers.`),
       USE_CASES: JSON.stringify(
         useCases.map((uc) => ({
           name: uc.name,
+          description: uc.description,
+          prerequisite: uc.prerequisite,
+          dq_notes: uc.dq_notes,
           min_readiness_level: uc.min_readiness_level,
           complexity: uc.implementation_complexity,
-          cost: uc.cost_band_indicative,
+          indicative_cost_band: uc.cost_band_indicative,
         })),
         null,
         2,

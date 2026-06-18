@@ -38,7 +38,7 @@ export function formatAssessmentResponse(
   const useCaseLines = result.useCases.map((entry) => {
     const cost = entry.useCase.cost_band_indicative;
     const complexity = entry.useCase.implementation_complexity;
-    return `- **${entry.useCase.name}** (${cost}, ${complexity}) — ${entry.rationale}`;
+    return `- **${entry.useCase.name}** (indicative catalog cost: ${cost}; ${complexity}) — ${entry.rationale}`;
   });
 
   const lines: string[] = [

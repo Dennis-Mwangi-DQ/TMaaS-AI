@@ -145,9 +145,14 @@
           <h1 class="text-2xl font-bold">AI Readiness Assessment</h1>
           <p class="text-gray-500 text-sm mt-1">Upload context documents, then chat with the advisor.</p>
         </div>
-        <span id="session-status-badge" class="shrink-0 text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
-          Active
-        </span>
+        <div class="shrink-0 flex flex-col items-end gap-2">
+          <span id="session-status-badge" class="text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full bg-slate-100 text-slate-600">
+            Active
+          </span>
+          <button type="button" id="new-assessment" class="text-xs font-semibold text-[#D97706] hover:text-amber-700">
+            New assessment
+          </button>
+        </div>
       </div>
 
       <div class="border-2 border-dashed border-gray-300 rounded-xl p-5 text-center hover:border-[#D97706] transition cursor-pointer mb-5" id="upload-zone">
@@ -220,7 +225,7 @@
       <div class="flex flex-col w-full" id="welcome-message">
         <div class="bg-white p-4 rounded-lg rounded-tl-none shadow-sm max-w-[90%] border border-gray-100 text-gray-800 text-sm leading-relaxed">
           <p class="font-semibold text-[#0F172A] mb-2">Welcome to your AI Readiness Assessment</p>
-          <p class="mb-2">I'm a Senior DQ Advisor. I'll interview you about your organisation's readiness for AI across seven dimensions — using any documents you upload as evidence.</p>
+          <p class="mb-2">I'm a Senior DQ Advisor. I'll first capture your name, company, size, industry, role, and main business problem, then keep the assessment focused.</p>
           <p class="text-gray-600">Upload a document on the left, or type a message below to begin.</p>
         </div>
       </div>
@@ -339,7 +344,8 @@
     const chatCta = document.getElementById('chat-cta');
     const chatCtaText = document.getElementById('chat-cta-text');
     const quickReplies = document.getElementById('quick-replies');
-    const welcomeMessage = document.getElementById('welcome-message');
+    let welcomeMessage = document.getElementById('welcome-message');
+    const newAssessmentBtn = document.getElementById('new-assessment');
 
     let sessionId = localStorage.getItem('tmaas_session_id') || crypto.randomUUID();
     let conversationTurns = 0;
@@ -414,6 +420,58 @@
           <span class="shrink-0 text-emerald-500 text-sm font-bold">✓</span>
         </div>
       `).join('');
+    }
+
+    function createWelcomeMessage() {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col w-full';
+      wrapper.id = 'welcome-message';
+      wrapper.innerHTML = `
+        <div class="bg-white p-4 rounded-lg rounded-tl-none shadow-sm max-w-[90%] border border-gray-100 text-gray-800 text-sm leading-relaxed">
+          <p class="font-semibold text-[#0F172A] mb-2">Welcome to your AI Readiness Assessment</p>
+          <p class="mb-2">I'm a Senior DQ Advisor. I'll first capture your name, company, size, industry, role, and main business problem, then keep the assessment focused.</p>
+          <p class="text-gray-600">Upload a document on the left, or type a message below to begin.</p>
+        </div>
+      `;
+      return wrapper;
+    }
+
+    function resetLocalAssessmentState(nextSessionId, systemMessage = '') {
+      sessionId = nextSessionId || crypto.randomUUID();
+      localStorage.setItem('tmaas_session_id', sessionId);
+      sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
+      sessionIdDisplay.title = sessionId;
+      conversationTurns = 0;
+      uploadedDocs.clear();
+      chatBox.innerHTML = '';
+      welcomeMessage = createWelcomeMessage();
+      chatBox.appendChild(welcomeMessage);
+      renderDocuments();
+      renderTopics();
+      setResultsLayout(false);
+      hideReportLoading();
+      hideChatPrompt();
+      quickReplies.classList.remove('hidden');
+      uploadStatus.classList.add('hidden');
+      document.getElementById('chat-turns').textContent = '0 messages';
+      const statusBadge = document.getElementById('session-status-badge');
+      statusBadge.textContent = 'Active';
+      statusBadge.className = 'text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full bg-slate-100 text-slate-600';
+      if (systemMessage) {
+        addSystemMessage(systemMessage);
+      }
+    }
+
+    async function startNewAssessment() {
+      try {
+        const res = await fetch('/api/session', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not start a new assessment.');
+        resetLocalAssessmentState(data.sessionId, 'New assessment started. Previous evidence and report remain in the old session.');
+      } catch {
+        resetLocalAssessmentState(crypto.randomUUID(), 'New assessment started locally.');
+      }
+      chatInput.focus();
     }
 
     function updateSessionUI(session) {
@@ -899,10 +957,7 @@
       }
 
       if (data.sessionId && data.sessionId !== sessionId) {
-        sessionId = data.sessionId;
-        localStorage.setItem('tmaas_session_id', sessionId);
-        sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
-        sessionIdDisplay.title = sessionId;
+        resetLocalAssessmentState(data.sessionId, 'New assessment started for this upload.');
       }
 
       uploadedDocs.set(data.fileName, {
@@ -950,10 +1005,10 @@
         }
 
         if (data.sessionId && data.sessionId !== sessionId) {
-          sessionId = data.sessionId;
-          localStorage.setItem('tmaas_session_id', sessionId);
-          sessionIdDisplay.textContent = sessionId.slice(0, 8) + '…';
-          sessionIdDisplay.title = sessionId;
+          resetLocalAssessmentState(data.sessionId, 'New assessment started. Previous evidence and report remain in the old session.');
+          if (showUserMessage) {
+            addMessage(message, true);
+          }
         }
 
         hideTypingIndicator();
@@ -1060,6 +1115,7 @@
     });
 
     leftPanelToggle.addEventListener('click', toggleLeftPanel);
+    newAssessmentBtn.addEventListener('click', startNewAssessment);
     leftPanelBackdrop.addEventListener('click', () => {
       leftPanelCollapsed = true;
       setResultsLayout(true);

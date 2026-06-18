@@ -18,8 +18,12 @@ uploadRouter.post("/", upload.single("document"), async (req, res) => {
       return;
     }
 
-    const sessionId = req.body.sessionId || generateSessionId();
-    const session = await getOrCreateSession(sessionId);
+    let sessionId = req.body.sessionId || generateSessionId();
+    let session = await getOrCreateSession(sessionId);
+    if (session.status === "completed") {
+      sessionId = generateSessionId();
+      session = await getOrCreateSession(sessionId);
+    }
 
     const rawText = await loadDocument(
       file.buffer,

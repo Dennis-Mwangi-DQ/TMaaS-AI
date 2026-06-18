@@ -233,16 +233,40 @@
 
   <div class="page">
     <div class="meta-grid">
+      {{#if session.respondentName}}
+      <div>
+        <div class="meta-label">Respondent</div>
+        <div>{{session.respondentName}}</div>
+      </div>
+      {{/if}}
       {{#if session.organisation}}
       <div>
         <div class="meta-label">Organisation</div>
         <div>{{session.organisation}}</div>
       </div>
       {{/if}}
+      {{#if session.organisationSize}}
+      <div>
+        <div class="meta-label">Organisation Size</div>
+        <div>{{session.organisationSize}}</div>
+      </div>
+      {{/if}}
       {{#if session.sector}}
       <div>
         <div class="meta-label">Sector</div>
         <div>{{session.sector}}</div>
+      </div>
+      {{/if}}
+      {{#if session.respondentRole}}
+      <div>
+        <div class="meta-label">Respondent Role</div>
+        <div>{{session.respondentRole}}</div>
+      </div>
+      {{/if}}
+      {{#if session.primaryUseCase}}
+      <div>
+        <div class="meta-label">Primary Use Case</div>
+        <div>{{session.primaryUseCase}}</div>
       </div>
       {{/if}}
       <div>
@@ -380,13 +404,13 @@
             <th>Use Case</th>
             <th>Min. Readiness</th>
             <th>Complexity</th>
-            <th>Est. Cost</th>
+            <th>Indicative Cost Band</th>
           </tr>
         </thead>
         <tbody>
           {{#each result.useCases}}
           <tr>
-            <td>{{@index}}</td>
+            <td>{{inc @index}}</td>
             <td><strong>{{this.useCase.name}}</strong></td>
             <td>{{this.useCase.min_readiness_level}}</td>
             <td>{{this.useCase.implementation_complexity}}</td>
@@ -398,11 +422,11 @@
 
       {{#each result.useCases}}
       <div class="use-case">
-        <div class="use-case-name">Use Case {{@index}}: {{this.useCase.name}}</div>
+        <div class="use-case-name">Use Case {{inc @index}}: {{this.useCase.name}}</div>
         <div class="use-case-meta">
           Minimum readiness: {{this.useCase.min_readiness_level}} |
           Complexity: {{this.useCase.implementation_complexity}} |
-          Indicative cost: {{this.useCase.cost_band_indicative}}
+          Indicative cost band: {{this.useCase.cost_band_indicative}}
         </div>
         <div class="use-case-field">{{this.rationale}}</div>
         {{#if this.details}}

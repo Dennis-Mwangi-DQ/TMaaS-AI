@@ -50,9 +50,12 @@ export type ConversationTurn = z.infer<typeof ConversationTurn>;
 
 export const AssessmentSessionSchema = z.object({
   sessionId: z.string().uuid(),
+  respondentName: z.string().optional(),
   organisation: z.string().optional(),
+  organisationSize: z.string().optional(),
   sector: z.string().optional(),
   respondentRole: z.string().optional(),
+  primaryUseCase: z.string().optional(),
   documentsUploaded: z.array(z.string()).default([]),
   conversationHistory: z.array(ConversationTurn).default([]),
   topicsCompleted: z.array(z.string()).default([]),

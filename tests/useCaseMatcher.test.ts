@@ -13,4 +13,13 @@ describe('Use Case Matcher', () => {
     const cases = matchUseCases('Retail', 'Not Ready');
     expect(cases.some(c => c.min_readiness_level === 'Scale Ready')).toBe(false);
   });
+
+  it('Ranks route optimisation first for a logistics route problem', () => {
+    const cases = matchUseCases('Logistics', 'Foundation Needed', {
+      problemStatement: 'We need route optimisation for delivery routes, fleet utilisation, and on-time delivery.',
+      maxResults: 1,
+    });
+
+    expect(cases[0]?.use_case_id).toBe('UC-LOG-001');
+  });
 });

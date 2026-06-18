@@ -7,10 +7,24 @@ import { ChatRequest } from "../types";
 
 const chatRouter = Router();
 
+function isExistingReportRequest(message: string): boolean {
+  return /\b(download|pdf|full report|advisory report|report panel|right panel|show result|show report)\b/i.test(message);
+}
+
 chatRouter.post("/", async (req, res) => {
   try {
     const parsed = ChatRequest.parse(req.body);
-    const sessionId = parsed.sessionId ?? generateSessionId();
+    let sessionId = parsed.sessionId ?? generateSessionId();
+    if (parsed.sessionId) {
+      const existingSession = await getOrCreateSession(parsed.sessionId);
+      if (
+        existingSession.status === "completed" &&
+        !isExistingReportRequest(parsed.message)
+      ) {
+        sessionId = generateSessionId();
+      }
+    }
+
     let { response, assessmentComplete, result } = await runAgent(
       parsed.message,
       sessionId,
@@ -30,6 +44,12 @@ chatRouter.post("/", async (req, res) => {
       result,
       sessionId: session.sessionId,
       session: {
+        respondentName: session.respondentName,
+        organisation: session.organisation,
+        organisationSize: session.organisationSize,
+        sector: session.sector,
+        respondentRole: session.respondentRole,
+        primaryUseCase: session.primaryUseCase,
         documentsUploaded: session.documentsUploaded,
         topicsCompleted: session.topicsCompleted,
         status: session.status,

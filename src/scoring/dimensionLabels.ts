@@ -35,7 +35,11 @@ export function dimensionNote(
   score: 0 | 1 | 2,
   evidence: EvidenceRecord[],
 ): string {
-  const match = evidence.find((record) => record.dimension === dimension);
+  const matches = evidence.filter((record) => record.dimension === dimension);
+  const match =
+    matches.find((record) => record.source === "CONVERSATION") ??
+    matches.find((record) => record.quality === "DOCUMENTED") ??
+    matches[0];
   if (match?.agentInterpretation) {
     return match.agentInterpretation;
   }

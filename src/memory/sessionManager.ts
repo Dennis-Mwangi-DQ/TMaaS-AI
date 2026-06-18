@@ -17,10 +17,19 @@ function nowIso(): string {
 function toAssessmentSession(row: Record<string, unknown>): AssessmentSession {
   return {
     sessionId: String(row.id),
+    respondentName: row.respondent_name
+      ? String(row.respondent_name)
+      : undefined,
     organisation: row.organisation ? String(row.organisation) : undefined,
+    organisationSize: row.organisation_size
+      ? String(row.organisation_size)
+      : undefined,
     sector: row.sector ? String(row.sector) : undefined,
     respondentRole: row.respondent_role
       ? String(row.respondent_role)
+      : undefined,
+    primaryUseCase: row.primary_use_case
+      ? String(row.primary_use_case)
       : undefined,
     documentsUploaded: Array.isArray(row.documents_uploaded)
       ? (row.documents_uploaded as string[])
@@ -47,9 +56,12 @@ function toAssessmentSession(row: Record<string, unknown>): AssessmentSession {
 function toDbSession(session: AssessmentSession): Record<string, unknown> {
   return {
     id: session.sessionId,
+    respondent_name: session.respondentName ?? null,
     organisation: session.organisation ?? null,
+    organisation_size: session.organisationSize ?? null,
     sector: session.sector ?? null,
     respondent_role: session.respondentRole ?? null,
+    primary_use_case: session.primaryUseCase ?? null,
     documents_uploaded: session.documentsUploaded,
     conversation_history: session.conversationHistory,
     topics_completed: session.topicsCompleted,

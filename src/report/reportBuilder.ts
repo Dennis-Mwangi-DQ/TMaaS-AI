@@ -17,6 +17,8 @@ import type {
   EvidenceRecord,
 } from "../types";
 
+handlebars.registerHelper("inc", (value: number) => value + 1);
+
 function formatReportDate(isoDate: string): string {
   const date = new Date(isoDate);
   if (Number.isNaN(date.getTime())) {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getOrCreateSession } from "../memory/sessionManager";
+import { generateSessionId } from "../lib/ids";
 import { fetchAssessmentResult } from "../output/assessmentResultStore";
 import {
   isAssessmentReadyForCompletion,
@@ -8,6 +9,32 @@ import {
 
 const sessionRouter = Router();
 
+sessionRouter.post("/", async (req, res) => {
+  try {
+    const session = await getOrCreateSession(generateSessionId());
+    res.json({
+      sessionId: session.sessionId,
+      session: {
+        respondentName: session.respondentName,
+        organisation: session.organisation,
+        organisationSize: session.organisationSize,
+        sector: session.sector,
+        respondentRole: session.respondentRole,
+        primaryUseCase: session.primaryUseCase,
+        documentsUploaded: session.documentsUploaded,
+        topicsCompleted: session.topicsCompleted,
+        status: session.status,
+        readinessLevel: session.readinessLevel,
+        dimensionScores: session.dimensionScores ?? {},
+        conversationTurns: session.conversationHistory.length,
+      },
+    });
+  } catch (error) {
+    console.error("Session creation error:", error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
 sessionRouter.get("/:sessionId", async (req, res) => {
   try {
     const session = await getOrCreateSession(req.params.sessionId);
@@ -15,6 +42,12 @@ sessionRouter.get("/:sessionId", async (req, res) => {
 
     res.json({
       sessionId: session.sessionId,
+      respondentName: session.respondentName,
+      organisation: session.organisation,
+      organisationSize: session.organisationSize,
+      sector: session.sector,
+      respondentRole: session.respondentRole,
+      primaryUseCase: session.primaryUseCase,
       documentsUploaded: session.documentsUploaded,
       topicsCompleted: session.topicsCompleted,
       status: session.status,
@@ -60,6 +93,12 @@ sessionRouter.post("/:sessionId/complete", async (req, res) => {
     res.json({
       result,
       session: {
+        respondentName: updatedSession.respondentName,
+        organisation: updatedSession.organisation,
+        organisationSize: updatedSession.organisationSize,
+        sector: updatedSession.sector,
+        respondentRole: updatedSession.respondentRole,
+        primaryUseCase: updatedSession.primaryUseCase,
         documentsUploaded: updatedSession.documentsUploaded,
         topicsCompleted: updatedSession.topicsCompleted,
         status: updatedSession.status,

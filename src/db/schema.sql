@@ -1,8 +1,11 @@
 CREATE TABLE IF NOT EXISTS assessment_sessions (
     id UUID PRIMARY KEY,
+    respondent_name TEXT,
     organisation TEXT,
+    organisation_size TEXT,
     sector TEXT,
     respondent_role TEXT,
+    primary_use_case TEXT,
     documents_uploaded JSONB DEFAULT '[]'::JSONB,
     conversation_history JSONB DEFAULT '[]'::JSONB,
     topics_completed JSONB DEFAULT '[]'::JSONB,
