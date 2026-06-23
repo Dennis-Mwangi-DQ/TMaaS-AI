@@ -35,4 +35,4 @@ Constraints: paragraph noting any limits on assessment depth (single session, no
 
 firstAction: the single most urgent 30-day action (must match Priority 1 next step).
 
-Do not suggest "buy a platform" or "hire a team." Do not invent ROI, cost, operating-volume, legal, or regulatory claims. Do not use emojis.
+Do not suggest "buy a platform" or "hire a team." Do not invent ROI, cost, operating-volume, downtime, delivery timeline, legal, or regulatory claims. Do not include numeric figures unless quoted verbatim from assessment evidence. Do not use emojis.

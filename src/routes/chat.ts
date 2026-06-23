@@ -25,7 +25,7 @@ chatRouter.post("/", async (req, res) => {
       }
     }
 
-    let { response, assessmentComplete, result } = await runAgent(
+    let { response, assessmentComplete, generatingReport, result } = await runAgent(
       parsed.message,
       sessionId,
     );
@@ -41,6 +41,7 @@ chatRouter.post("/", async (req, res) => {
     res.json({
       response,
       assessmentComplete,
+      generatingReport: generatingReport ?? (assessmentComplete && !result),
       result,
       sessionId: session.sessionId,
       session: {

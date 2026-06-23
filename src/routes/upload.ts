@@ -2,6 +2,10 @@ import { Router } from "express";
 import multer from "multer";
 import { loadDocument } from "../ingestion/documentLoader";
 import { extractEvidence } from "../ingestion/evidenceExtractor";
+import {
+  extractOrganisationFromDocument,
+  organisationsMismatch,
+} from "../ingestion/orgDetector";
 import { generateSessionId } from "../lib/ids";
 import { getOrCreateSession, updateSession } from "../memory/sessionManager";
 
@@ -20,16 +24,28 @@ uploadRouter.post("/", upload.single("document"), async (req, res) => {
 
     let sessionId = req.body.sessionId || generateSessionId();
     let session = await getOrCreateSession(sessionId);
-    if (session.status === "completed") {
-      sessionId = generateSessionId();
-      session = await getOrCreateSession(sessionId);
-    }
 
     const rawText = await loadDocument(
       file.buffer,
       file.mimetype,
       file.originalname,
     );
+
+    const documentOrganisation = extractOrganisationFromDocument(rawText);
+    const shouldReset =
+      session.status === "completed" ||
+      organisationsMismatch(session.organisation, documentOrganisation);
+
+    let resetReason: string | undefined;
+    if (shouldReset) {
+      resetReason =
+        session.status === "completed"
+          ? "completed_session"
+          : "organisation_mismatch";
+      sessionId = generateSessionId();
+      session = await getOrCreateSession(sessionId);
+    }
+
     console.log(
       `Document ${file.originalname} loaded with ${rawText.length} characters for session ${sessionId}`,
     );
@@ -51,6 +67,8 @@ uploadRouter.post("/", upload.single("document"), async (req, res) => {
       evidenceCount: evidence.length,
       evidenceSummary: `${evidence.length} evidence records extracted`,
       documentsUploaded,
+      resetReason,
+      documentOrganisation,
     });
   } catch (error) {
     console.error("Upload error:", error);

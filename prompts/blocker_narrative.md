@@ -19,6 +19,6 @@ Conversation Highlights:
 
 Write a direct, evidence-based executive summary. Do not be overly positive. Ground every claim in what the respondent said or what documents showed. If evidence is thin, say so.
 
-Separate confirmed evidence from inference and assumption. Do not invent ROI, cost, operating volume, legal, or regulatory claims. Only mention cost if it is clearly labelled as indicative catalog context, not an assessed business case.
+Separate confirmed evidence from inference and assumption. Do not invent ROI, cost, operating volume, downtime estimates, delivery timelines, legal, or regulatory claims. Do not include numeric figures unless quoted verbatim from assessment evidence.
 
 Do not use consulting buzzwords ("digital transformation", "strategic alignment", "maturity journey") unless the respondent used them. Do not use emojis.

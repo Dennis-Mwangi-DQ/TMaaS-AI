@@ -26,6 +26,6 @@ For each use case provide:
 - integrationPoints: systems, APIs, or workflows required
 - keyRisks: top 2-3 risks (technical, operational, adoption)
 - sequencing: when in the 90-180 day roadmap to start and prerequisites
-- vendorNote: build in-house, SaaS, or co-develop; name vendor categories if relevant
+- vendorNote: build vs buy consideration only — describe delivery approach (in-house, SaaS, or co-develop) without naming vendors or products
 
-Ground recommendations in assessment evidence. Do not invent ROI, cost savings, legal, or regulatory claims. If mentioning catalog cost bands, label them as indicative only. Do not use emojis.
+Ground recommendations in assessment evidence. Do not invent ROI, cost savings, downtime estimates, delivery timelines, legal, or regulatory claims. Do not include numeric cost or ROI figures unless quoted verbatim from assessment evidence. Do not use emojis.

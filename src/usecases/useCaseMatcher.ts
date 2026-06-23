@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import type { ReadinessLevel, UseCaseEntry } from '../types';
+import type {
+  DimensionName,
+  EvidenceRecord,
+  ReadinessLevel,
+  UseCaseEntry,
+} from '../types';
 
 let useCasesCache: UseCaseEntry[] | null = null;
 
@@ -29,7 +34,16 @@ const readinessRank: Record<ReadinessLevel, number> = {
 export type UseCaseMatchContext = {
   problemStatement?: string;
   conversation?: string;
+  evidence?: EvidenceRecord[];
   maxResults?: number;
+};
+
+export type UseCaseGateInput = {
+  sector: string;
+  readinessLevel: ReadinessLevel;
+  problemStatement?: string;
+  conversation?: string;
+  evidence: EvidenceRecord[];
 };
 
 const STOP_WORDS = new Set([
@@ -80,6 +94,26 @@ const KEYWORD_EXPANSIONS: Record<string, string[]> = {
   customer: ['support', 'ticket', 'crm', 'query'],
   fraud: ['transaction', 'payment', 'risk'],
   pricing: ['price', 'margin', 'inventory'],
+  meeting: ['summarisation', 'summarization', 'transcript', 'action'],
+  screening: ['cv', 'resume', 'hiring', 'recruitment'],
+};
+
+const PREREQUISITE_SIGNAL_MAP: Record<string, DimensionName[]> = {
+  historical: ['data_quality_history', 'data_accessibility'],
+  sales: ['data_quality_history', 'data_accessibility'],
+  forecast: ['data_quality_history', 'data_accessibility'],
+  demand: ['data_quality_history', 'data_accessibility'],
+  sensor: ['systems_integration', 'data_accessibility'],
+  iot: ['systems_integration', 'data_accessibility'],
+  integration: ['systems_integration'],
+  api: ['systems_integration'],
+  ticket: ['data_accessibility', 'systems_integration'],
+  document: ['data_accessibility'],
+  recording: ['data_accessibility'],
+  transcript: ['data_accessibility'],
+  camera: ['systems_integration', 'implementation_capability'],
+  gps: ['systems_integration', 'data_accessibility'],
+  fleet: ['systems_integration', 'data_accessibility'],
 };
 
 function normalize(value: string): string {
@@ -129,6 +163,92 @@ function exactSectorMatch(useCase: UseCaseEntry, sector: string): boolean {
   return useCase.sectors.some((entry) => normalize(entry) === normalizedSector);
 }
 
+function problemAligns(useCase: UseCaseEntry, problemTokens: Set<string>): boolean {
+  if (problemTokens.size === 0) {
+    return false;
+  }
+  const text = useCaseText(useCase);
+  for (const token of problemTokens) {
+    if (text.includes(token)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function prerequisiteTokens(prerequisite: string): Set<string> {
+  return tokenize(prerequisite);
+}
+
+function evidenceCorpus(input: UseCaseGateInput): string {
+  return [
+    input.problemStatement ?? '',
+    input.conversation ?? '',
+    ...input.evidence.map((e) => `${e.extractedText} ${e.agentInterpretation}`),
+  ].join(' ').toLowerCase();
+}
+
+function hasDataSignals(useCase: UseCaseEntry, input: UseCaseGateInput): boolean {
+  if (input.evidence.length === 0) {
+    return false;
+  }
+
+  const prereqText = useCase.prerequisite.toLowerCase();
+  const relevantDimensions = new Set<DimensionName>();
+
+  for (const [keyword, dimensions] of Object.entries(PREREQUISITE_SIGNAL_MAP)) {
+    if (prereqText.includes(keyword) || useCaseText(useCase).includes(keyword)) {
+      for (const dim of dimensions) {
+        relevantDimensions.add(dim);
+      }
+    }
+  }
+
+  if (relevantDimensions.size === 0) {
+    return input.evidence.some((record) =>
+      record.quality === 'DOCUMENTED' || record.source === 'DOCUMENT',
+    );
+  }
+
+  return input.evidence.some((record) => relevantDimensions.has(record.dimension));
+}
+
+function prerequisitesConfirmed(useCase: UseCaseEntry, input: UseCaseGateInput): boolean {
+  const corpus = evidenceCorpus(input);
+  const tokens = prerequisiteTokens(useCase.prerequisite);
+  if (tokens.size === 0) {
+    return input.evidence.length > 0;
+  }
+
+  let matched = 0;
+  for (const token of tokens) {
+    if (corpus.includes(token)) {
+      matched += 1;
+    }
+  }
+
+  return matched >= Math.min(2, tokens.size);
+}
+
+export function passesEvidenceGate(
+  useCase: UseCaseEntry,
+  input: UseCaseGateInput,
+): boolean {
+  const problemTokens = tokenize(
+    [input.problemStatement, input.conversation].filter(Boolean).join(' '),
+  );
+  const currentRank = readinessRank[input.readinessLevel];
+  const minRank = readinessRank[useCase.min_readiness_level] ?? 0;
+
+  return (
+    problemAligns(useCase, problemTokens) &&
+    hasDataSignals(useCase, input) &&
+    sectorMatches(useCase, input.sector || 'All') &&
+    currentRank >= minRank &&
+    prerequisitesConfirmed(useCase, input)
+  );
+}
+
 function relevanceScore(
   useCase: UseCaseEntry,
   sector: string,
@@ -158,6 +278,39 @@ function relevanceScore(
   return score;
 }
 
+function findBestCatalogMatch(
+  problemStatement: string | undefined,
+  candidates: UseCaseEntry[],
+): UseCaseEntry | undefined {
+  if (!problemStatement || candidates.length === 0) {
+    return undefined;
+  }
+
+  const problemTokens = tokenize(problemStatement);
+  if (problemTokens.size === 0) {
+    return undefined;
+  }
+
+  let best: UseCaseEntry | undefined;
+  let bestScore = -1;
+
+  for (const uc of candidates) {
+    const text = useCaseText(uc);
+    let score = 0;
+    for (const token of problemTokens) {
+      if (text.includes(token)) {
+        score += 4;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = uc;
+    }
+  }
+
+  return bestScore > 0 ? best : undefined;
+}
+
 export function matchUseCases(
   sector: string,
   readinessLevel: ReadinessLevel,
@@ -165,20 +318,23 @@ export function matchUseCases(
 ): UseCaseEntry[] {
   const useCases = loadUseCases();
   const maxResults = context.maxResults ?? 3;
-  const currentRank = readinessRank[readinessLevel];
   const resolvedSector = sector || 'All';
+  const evidence = context.evidence ?? [];
   const problemTokens = tokenize(
     [context.problemStatement, context.conversation].filter(Boolean).join(' '),
   );
 
-  const matched = useCases.filter((uc) => {
-    const sectorMatch = sectorMatches(uc, resolvedSector);
-    const minRank = readinessRank[uc.min_readiness_level] ?? 0;
-    const readinessMatch = currentRank >= minRank;
-    return sectorMatch && readinessMatch;
-  });
+  const gateInput: UseCaseGateInput = {
+    sector: resolvedSector,
+    readinessLevel,
+    problemStatement: context.problemStatement,
+    conversation: context.conversation,
+    evidence,
+  };
 
-  matched.sort((a, b) => {
+  const gated = useCases.filter((uc) => passesEvidenceGate(uc, gateInput));
+
+  gated.sort((a, b) => {
     const relevanceDelta =
       relevanceScore(b, resolvedSector, readinessLevel, problemTokens) -
       relevanceScore(a, resolvedSector, readinessLevel, problemTokens);
@@ -190,5 +346,43 @@ export function matchUseCases(
     return rankB - rankA;
   });
 
-  return matched.slice(0, maxResults);
+  const primary = findBestCatalogMatch(context.problemStatement, useCases);
+  if (primary) {
+    const primaryPasses = passesEvidenceGate(primary, gateInput);
+    if (primaryPasses) {
+      const secondaries = gated.filter((uc) => uc.use_case_id !== primary.use_case_id);
+      return [primary, ...secondaries].slice(0, maxResults);
+    }
+    return [primary];
+  }
+
+  return gated.slice(0, maxResults);
+}
+
+export function primaryUseCaseNeedsValidation(
+  sector: string,
+  readinessLevel: ReadinessLevel,
+  context: UseCaseMatchContext = {},
+): boolean {
+  if (!context.problemStatement) {
+    return false;
+  }
+
+  const primary = findBestCatalogMatch(
+    context.problemStatement,
+    loadUseCases().filter((uc) => sectorMatches(uc, sector || 'All')),
+  );
+  if (!primary) {
+    return false;
+  }
+
+  const gateInput: UseCaseGateInput = {
+    sector: sector || 'All',
+    readinessLevel,
+    problemStatement: context.problemStatement,
+    conversation: context.conversation,
+    evidence: context.evidence ?? [],
+  };
+
+  return !passesEvidenceGate(primary, gateInput);
 }

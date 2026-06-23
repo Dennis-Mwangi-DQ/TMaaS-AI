@@ -67,6 +67,11 @@
       animation: spin 0.8s linear infinite;
       margin-bottom: 1rem;
     }
+    #report-loading-progress-wrap {
+      width: 100%;
+      max-width: 280px;
+      margin-top: 1.25rem;
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
     #left-panel.collapsed {
       width: 0 !important;
@@ -264,7 +269,16 @@
     <div id="report-loading">
       <div class="report-spinner"></div>
       <p class="text-sm font-semibold text-gray-700" id="report-loading-title">Generating your advisory…</p>
-      <p class="text-xs text-gray-400 mt-2 max-w-[220px]" id="report-loading-sub">Analysing evidence, scoring dimensions, and building your report.</p>
+      <p class="text-xs text-gray-400 mt-2 max-w-[280px]" id="report-loading-sub">Analysing evidence, scoring dimensions, and building your report.</p>
+      <div id="report-loading-progress-wrap">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span id="report-loading-stage">Starting…</span>
+          <span id="report-loading-percent">0%</span>
+        </div>
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div id="report-loading-bar" class="h-full bg-[#D97706] rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
     </div>
     <!-- Report content (hidden until ready) -->
     <div id="report-content" class="p-6">
@@ -550,6 +564,56 @@
       }
     }
 
+    const REPORT_GENERATION_STAGES = [
+      { min: 0, label: 'Finalising dimension scores…' },
+      { min: 15, label: 'Analysing collected evidence…' },
+      { min: 30, label: 'Drafting executive summary…' },
+      { min: 45, label: 'Matching recommended use cases…' },
+      { min: 60, label: 'Building blockers and roadmap…' },
+      { min: 75, label: 'Validating advisory content…' },
+      { min: 88, label: 'Preparing your report…' },
+    ];
+
+    let reportProgressTimer = null;
+
+    function stageLabelForProgress(percent) {
+      let label = REPORT_GENERATION_STAGES[0].label;
+      for (const stage of REPORT_GENERATION_STAGES) {
+        if (percent >= stage.min) {
+          label = stage.label;
+        }
+      }
+      return label;
+    }
+
+    function updateReportProgress(percent, stageLabel) {
+      const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+      document.getElementById('report-loading-percent').textContent = `${clamped}%`;
+      document.getElementById('report-loading-bar').style.width = `${clamped}%`;
+      document.getElementById('report-loading-stage').textContent =
+        stageLabel || stageLabelForProgress(clamped);
+    }
+
+    function startReportProgress() {
+      stopReportProgress();
+      let progress = 0;
+      updateReportProgress(0, 'Starting document generation…');
+      reportProgressTimer = setInterval(() => {
+        if (progress < 90) {
+          progress += Math.random() * 6 + 3;
+          progress = Math.min(90, progress);
+          updateReportProgress(progress);
+        }
+      }, 700);
+    }
+
+    function stopReportProgress() {
+      if (reportProgressTimer) {
+        clearInterval(reportProgressTimer);
+        reportProgressTimer = null;
+      }
+    }
+
     async function ensureAssessmentResult() {
       const sessionRes = await fetch(`/api/session/${sessionId}`);
       if (!sessionRes.ok) {
@@ -565,23 +629,35 @@
         throw new Error('Assessment is not ready to generate a report yet.');
       }
 
-      // Show right panel with loader before the (slow) generation call
       leftPanelCollapsed = true;
       setResultsLayout(true);
-      showReportLoading('Generating your advisory…', 'Running analysis across all seven dimensions. This takes 20–40 seconds.');
+      showReportLoading(
+        'Generating your advisory document…',
+        'All interview information has been captured. Building your readiness advisory now.',
+      );
+      startReportProgress();
 
-      const completeRes = await fetch(`/api/session/${sessionId}/complete`, {
-        method: 'POST',
-      });
-      const completeData = await completeRes.json();
-      if (!completeRes.ok) {
+      try {
+        const completeRes = await fetch(`/api/session/${sessionId}/complete`, {
+          method: 'POST',
+        });
+        const completeData = await completeRes.json();
+        if (!completeRes.ok) {
+          throw new Error(completeData.error || 'Failed to generate assessment report.');
+        }
+
+        stopReportProgress();
+        updateReportProgress(100, 'Complete');
+        await new Promise((resolve) => setTimeout(resolve, 350));
+
+        showResults(completeData.result, completeData.session);
+        updateSessionUI(completeData.session);
+        return completeData.result;
+      } catch (error) {
+        stopReportProgress();
         hideReportLoading();
-        throw new Error(completeData.error || 'Failed to generate assessment report.');
+        throw error;
       }
-
-      showResults(completeData.result, completeData.session);
-      updateSessionUI(completeData.session);
-      return completeData.result;
     }
 
     function addSystemMessage(text) {
@@ -641,11 +717,13 @@
     function showReportLoading(title = 'Generating your advisory…', sub = 'Analysing evidence, scoring dimensions, and building your report.') {
       document.getElementById('report-loading-title').textContent = title;
       document.getElementById('report-loading-sub').textContent = sub;
+      updateReportProgress(0, 'Starting document generation…');
       reportLoading.classList.add('visible');
       reportContent.style.display = 'none';
     }
 
     function hideReportLoading() {
+      stopReportProgress();
       reportLoading.classList.remove('visible');
       reportContent.style.display = '';
     }
@@ -957,7 +1035,10 @@
       }
 
       if (data.sessionId && data.sessionId !== sessionId) {
-        resetLocalAssessmentState(data.sessionId, 'New assessment started for this upload.');
+        const resetMessage = data.resetReason === 'organisation_mismatch'
+          ? 'New assessment started — document belongs to a different organisation.'
+          : 'New assessment started for this upload.';
+        resetLocalAssessmentState(data.sessionId, resetMessage);
       }
 
       uploadedDocs.set(data.fileName, {
@@ -1023,11 +1104,12 @@
 
         if (data.result) {
           showResults(data.result, data.session);
-        } else if (data.assessmentComplete) {
+        } else if (data.generatingReport || data.assessmentComplete) {
+          leftPanelCollapsed = true;
+          setResultsLayout(true);
           try {
             await ensureAssessmentResult();
           } catch (err) {
-            hideReportLoading();
             addMessage(err.message || 'Assessment completed, but the report could not be loaded.', false);
           }
         }

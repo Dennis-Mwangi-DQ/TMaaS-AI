@@ -26,6 +26,7 @@ import { ALL_TOOLS } from './tools';
 type AgentRunResult = {
   response: string;
   assessmentComplete?: boolean;
+  generatingReport?: boolean;
   result?: unknown;
 };
 
@@ -123,6 +124,23 @@ function parseAssessmentResult(text: string): unknown | undefined {
     return undefined;
   }
 }
+
+function isReadyForReportGeneration(toolOutputs: string[]): boolean {
+  return toolOutputs.some((output) => {
+    try {
+      const parsed = JSON.parse(output) as { status?: string };
+      return parsed?.status === 'ready_for_report_generation';
+    } catch {
+      return output.includes('ready_for_report_generation');
+    }
+  });
+}
+
+const REPORT_GENERATION_MESSAGE = `**Assessment interview complete**
+
+I have captured all the information needed across the five assessment topics and seven readiness dimensions. I am now generating your advisory document — you can follow the progress in the panel on the right.
+
+This usually takes 20–40 seconds.`;
 
 function resolveAssessmentResult(
   response: string,
@@ -288,6 +306,11 @@ export async function runAgent(
   let parsedResult = resolveAssessmentResult(response, toolOutputs);
   let completedSession = await getOrCreateSession(resolvedSessionId);
   evidence = await fetchEvidenceContext(resolvedSessionId);
+  const readyForReport = isReadyForReportGeneration(toolOutputs);
+
+  if (readyForReport && !parsedResult) {
+    response = REPORT_GENERATION_MESSAGE;
+  }
 
   if (!parsedResult) {
     parsedResult = await fetchAssessmentResult(resolvedSessionId);
@@ -337,6 +360,7 @@ export async function runAgent(
 
   const assessmentComplete =
     Boolean(parsedResult) ||
+    readyForReport ||
     response.includes('assessment_completed') ||
     toolOutputs.some((output) => output.includes('assessment_completed')) ||
     completedSession.status === 'completed';
@@ -345,5 +369,6 @@ export async function runAgent(
     response,
     assessmentComplete,
     result: parsedResult,
+    generatingReport: readyForReport && !parsedResult,
   };
 }

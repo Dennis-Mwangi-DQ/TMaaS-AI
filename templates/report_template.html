@@ -16,6 +16,8 @@
     }
     .page { padding: 36px 42px 48px; }
     .page-break { page-break-before: always; }
+    .section-break { page-break-before: auto; }
+    .avoid-break { page-break-inside: avoid; }
     .cover-bar {
       background: #0F172A;
       color: #fff;
@@ -222,7 +224,7 @@
       color: #94A3B8;
       text-align: center;
     }
-    .section { page-break-inside: avoid; }
+    .section { margin-bottom: 20px; }
   </style>
 </head>
 <body>
@@ -279,7 +281,7 @@
       </div>
     </div>
 
-    <!-- Section 1: Executive Summary -->
+    <!-- Section 1: Executive Summary (includes inline scorecard) -->
     <div class="section">
       <h2>1. Executive Summary</h2>
       <div class="readiness-banner">
@@ -287,45 +289,12 @@
         <p class="readiness-score">Score: {{totalScore}} / {{maxScore}}</p>
       </div>
 
-      <table class="data-table" style="margin-bottom: 14px;">
-        <thead>
-          <tr>
-            <th>Readiness Tier</th>
-            <th>Composite Score</th>
-            <th>Primary Strength</th>
-            <th>Primary Gap</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>{{result.readinessLevel}}</strong></td>
-            <td>{{totalScore}} / {{maxScore}}</td>
-            <td>{{executiveSummary.primaryStrength}}</td>
-            <td>{{executiveSummary.primaryGap}}</td>
-          </tr>
-        </tbody>
-      </table>
-
       <div class="narrative">{{result.narrative}}</div>
       {{#if levelSummary}}
       <p style="margin-top: 12px; color: #475569; font-size: 10pt;">{{levelSummary}}</p>
       {{/if}}
 
-      {{#if findings}}
-      <div class="findings-box">
-        <strong>What we believe is true:</strong>
-        <ul>{{#each findings.believed}}<li>{{this}}</li>{{/each}}</ul>
-        <strong>What remains uncertain:</strong>
-        <ul>{{#each findings.uncertain}}<li>{{this}}</li>{{/each}}</ul>
-        <p><strong>Biggest risk:</strong> {{findings.biggestRisk}}</p>
-        <p><strong>Recommended next step:</strong> {{findings.recommendedNextStep}}</p>
-      </div>
-      {{/if}}
-    </div>
-
-    <!-- Section 2: Dimension Scorecard -->
-    <div class="section page-break">
-      <h2>2. Dimension Scorecard</h2>
+      <h3 style="margin-top: 18px;">Dimension Scorecard</h3>
       <table class="data-table scorecard">
         <thead>
           <tr>
@@ -346,47 +315,29 @@
           {{/each}}
         </tbody>
       </table>
-    </div>
 
-    <!-- Section 3: Dimension-Level Analysis -->
-    {{#if hasExtended}}
-    <div class="section page-break">
-      <h2>3. Dimension-Level Analysis</h2>
-      <p style="font-size: 10pt; color: #475569;">Detailed breakdown of each dimension including evidence, gaps, and deployment implications.</p>
-      {{#each dimensionAnalyses}}
-      <div class="dimension-dive">
-        <h3>3.{{this.sectionNumber}} {{this.label}} ({{this.score}}/2 — {{this.status}}{{#if this.confidence}}, {{this.confidence}} confidence{{/if}})</h3>
-        <table class="data-table">
-          <tbody>
-            <tr><td>Evidence gathered</td><td>{{this.evidence}}</td></tr>
-            <tr><td>Gaps identified</td><td>{{this.gaps}}</td></tr>
-            <tr><td>AI deployment impact</td><td>{{this.deploymentImpact}}</td></tr>
-            <tr><td>Recommended actions</td><td>{{this.recommendedActionsText}}</td></tr>
-          </tbody>
-        </table>
+      {{#if findings}}
+      <div class="findings-box">
+        <strong>Biggest risk:</strong> {{findings.biggestRisk}}
       </div>
-      {{/each}}
+      {{/if}}
     </div>
-    {{/if}}
 
-    <!-- Section 4: Critical Blockers -->
-    <div class="section page-break">
-      <h2>4. Critical Blockers</h2>
+    <!-- Section 2: Critical Blockers -->
+    <div class="section section-break">
+      <h2>2. Critical Blockers</h2>
       {{#if detailedBlockers.length}}
         {{#each detailedBlockers}}
-        <div class="blocker">
+        <div class="blocker avoid-break">
           <div class="blocker-title">BLOCKER: {{this.title}}</div>
-          <div class="blocker-field"><strong>Affected dimensions:</strong> {{#each this.affectedDimensions}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}</div>
           <div class="blocker-field"><strong>Severity:</strong> {{this.severity}}</div>
           <div class="blocker-field"><strong>Root cause:</strong> {{this.rootCause}}</div>
-          <div class="blocker-field"><strong>Business impact:</strong> {{this.businessImpact}}</div>
-          <div class="blocker-field"><strong>Resolution pathway:</strong> {{this.resolutionPathway}}</div>
-          <div class="blocker-field"><strong>Dependencies:</strong> {{this.dependencies}}</div>
+          <div class="blocker-field"><strong>Resolution:</strong> {{this.resolutionPathway}}</div>
         </div>
         {{/each}}
       {{else}}
         {{#each result.blockers}}
-        <div class="blocker">
+        <div class="blocker avoid-break">
           <div class="blocker-title">{{this.title}}</div>
           <div class="blocker-desc">{{this.description}}</div>
         </div>
@@ -394,65 +345,45 @@
       {{/if}}
     </div>
 
-    <!-- Section 5: Recommended AI Use Cases -->
-    <div class="section page-break">
-      <h2>5. Recommended AI Use Cases</h2>
-      <table class="data-table" style="margin-bottom: 16px;">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Use Case</th>
-            <th>Min. Readiness</th>
-            <th>Complexity</th>
-            <th>Indicative Cost Band</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{#each result.useCases}}
-          <tr>
-            <td>{{inc @index}}</td>
-            <td><strong>{{this.useCase.name}}</strong></td>
-            <td>{{this.useCase.min_readiness_level}}</td>
-            <td>{{this.useCase.implementation_complexity}}</td>
-            <td>{{this.useCase.cost_band_indicative}}</td>
-          </tr>
-          {{/each}}
-        </tbody>
-      </table>
-
+    <!-- Section 3: Recommended Use Case -->
+    <div class="section section-break">
+      <h2>3. Recommended Use Case</h2>
+      <p style="font-size: 9.5pt; color: #64748B; margin-bottom: 12px;">Indicative cost bands are catalog benchmarks only — not confirmed business case figures.</p>
       {{#each result.useCases}}
-      <div class="use-case">
-        <div class="use-case-name">Use Case {{inc @index}}: {{this.useCase.name}}</div>
+      <div class="use-case avoid-break">
+        <div class="use-case-name">{{this.useCase.name}}</div>
         <div class="use-case-meta">
-          Minimum readiness: {{this.useCase.min_readiness_level}} |
+          Readiness: {{this.useCase.min_readiness_level}} |
           Complexity: {{this.useCase.implementation_complexity}} |
-          Indicative cost band: {{this.useCase.cost_band_indicative}}
+          Cost band (benchmark): {{this.useCase.cost_band_indicative}}
         </div>
         <div class="use-case-field">{{this.rationale}}</div>
         {{#if this.details}}
-        <div class="use-case-field"><strong>Description:</strong> {{this.details.description}}</div>
-        <div class="use-case-field"><strong>Business rationale:</strong> {{this.details.businessRationale}}</div>
         <div class="use-case-field"><strong>Data requirements:</strong> {{this.details.dataRequirements}}</div>
-        <div class="use-case-field"><strong>Integration points:</strong> {{this.details.integrationPoints}}</div>
         <div class="use-case-field"><strong>Key risks:</strong> {{#each this.details.keyRisks}}{{this}}{{#unless @last}}; {{/unless}}{{/each}}</div>
-        <div class="use-case-field"><strong>Sequencing:</strong> {{this.details.sequencing}}</div>
-        <div class="use-case-field"><strong>Vendor / build note:</strong> {{this.details.vendorNote}}</div>
+        <div class="use-case-field"><strong>Delivery approach:</strong> {{this.details.vendorNote}}</div>
         {{/if}}
       </div>
       {{/each}}
     </div>
 
-    <!-- Section 6: Roadmap -->
-    {{#if roadmap.length}}
-    <div class="section page-break">
-      <h2>6. Recommended Roadmap</h2>
+    <!-- Section 4: Immediate Next Action -->
+    <div class="section section-break">
+      <h2>4. Immediate Next Action</h2>
+      <div class="action-box avoid-break">{{result.firstAction}}</div>
+      {{#if nextSteps.length}}
+        {{#each nextSteps}}
+        <p style="font-size: 10pt; margin-top: 10px;"><strong>{{this.label}}:</strong> {{this.action}}</p>
+        {{/each}}
+      {{/if}}
+      {{#if roadmap.length}}
+      <h3 style="margin-top: 16px;">Roadmap highlights</h3>
       <table class="data-table">
         <thead>
           <tr>
             <th>Horizon</th>
             <th>Timeline</th>
             <th>Action</th>
-            <th>Owner</th>
           </tr>
         </thead>
         <tbody>
@@ -461,27 +392,23 @@
             <td><strong>{{this.horizon}}</strong></td>
             <td>{{this.timeline}}</td>
             <td>{{this.action}}</td>
-            <td>{{this.owner}}</td>
           </tr>
           {{/each}}
         </tbody>
       </table>
-    </div>
-    {{/if}}
-
-    <!-- Section 7: Risks, Assumptions & Constraints -->
-    {{#if hasExtended}}
-    <div class="section page-break">
-      <h2>7. Risks, Assumptions &amp; Constraints</h2>
-
-      {{#if assumptions.length}}
-      <h3>7.1 Key Assumptions</h3>
-      <ul>{{#each assumptions}}<li>{{this}}</li>{{/each}}</ul>
       {{/if}}
+    </div>
 
+    <!-- Section 5: Evidence Appendix -->
+    <div class="section section-break">
+      <h2>5. Evidence Appendix</h2>
+      {{#if assumptions.length}}
+      <h3>Assumptions</h3>
+      <ul style="font-size: 10pt; margin: 0 0 12px 18px;">{{#each assumptions}}<li>{{this}}</li>{{/each}}</ul>
+      {{/if}}
       {{#if risks.length}}
-      <h3>7.2 Key Risks</h3>
-      <table class="data-table">
+      <h3>Key Risks</h3>
+      <table class="data-table" style="margin-bottom: 14px;">
         <thead>
           <tr>
             <th>Risk</th>
@@ -502,44 +429,17 @@
         </tbody>
       </table>
       {{/if}}
-
       {{#if constraints}}
-      <h3>7.3 Constraints Noted</h3>
-      <p style="font-size: 10pt;">{{constraints}}</p>
+      <p style="font-size: 10pt; margin-bottom: 12px;"><strong>Constraints:</strong> {{constraints}}</p>
       {{/if}}
-    </div>
-    {{/if}}
-
-    <!-- Section 8: Immediate Next Steps -->
-    <div class="section page-break">
-      <h2>8. Immediate Next Steps</h2>
-      {{#if nextSteps.length}}
-        {{#each nextSteps}}
-        <h3>{{this.label}}</h3>
-        <p style="font-size: 10pt; margin-bottom: 10px;">{{this.action}}</p>
-        {{/each}}
-      {{else}}
-        <h3>Priority 1 Action (30 Days)</h3>
-        <div class="action-box">{{result.firstAction}}</div>
-      {{/if}}
-    </div>
-
-    <!-- Section 9: Appendix -->
-    {{#if hasExtended}}
-    <div class="section page-break">
-      <h2>9. Appendix</h2>
-      <h3>9.1 Assessment Methodology</h3>
-      <p style="font-size: 10pt;">This advisory is produced using a structured seven-dimension scoring framework administered by DQ TMaaS Agent A. Each dimension is assessed via discovery session questions, scored 0-2, and aggregated to a composite score. Recommendations are calibrated to the organisation's tier and sector context.</p>
-
-      <h3>9.2 Session Notes &amp; Evidence</h3>
+      <h3>Session Evidence</h3>
       {{#each sessionEvidence}}
-      <div class="evidence-item">
+      <div class="evidence-item avoid-break">
         <div class="evidence-source">{{this.source}}{{#if this.dimension}} — {{this.dimension}}{{/if}}</div>
         <div>{{this.text}}</div>
       </div>
       {{/each}}
     </div>
-    {{/if}}
 
     <div class="footer">
       Confidential advisory output generated by DQ TMaaS Agent A. This document is indicative and does not constitute a formal engagement deliverable.

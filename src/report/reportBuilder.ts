@@ -138,10 +138,11 @@ export async function buildReport(
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "load" });
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
+      preferCSSPageSize: true,
       margin: { top: "0", right: "0", bottom: "24px", left: "0" },
     });
     return Buffer.from(pdfBuffer);

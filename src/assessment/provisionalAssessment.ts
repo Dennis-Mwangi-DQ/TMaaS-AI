@@ -136,6 +136,10 @@ export function buildProvisionalAssessmentResponse(
     ].join('\n');
   }
 
+  const correctionNote = evidence.find((record) =>
+    record.agentInterpretation.toLowerCase().includes('context corrected'),
+  );
+
   const projected = projectedScores(scores);
   const readiness = determineReadinessLevel(projected);
   const confidence = confidenceLabel(scoredDimensions.length, completedTopics);
@@ -158,6 +162,9 @@ export function buildProvisionalAssessmentResponse(
     `**Confidence:** ${confidence}`,
     `**Evidence coverage:** ${scoredDimensions.length}/7 dimensions scored; ${completedTopics}/5 topics complete.`,
     '',
+    ...(correctionNote
+      ? ['**Context note:** Prior scoring retained; only corrected profile fields were updated.', '']
+      : []),
     '**Confirmed evidence so far:**',
     ...confirmedLines,
     '',

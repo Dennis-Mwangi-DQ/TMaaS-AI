@@ -2,8 +2,13 @@ import { z } from 'zod';
 import { tool } from '@langchain/core/tools';
 import { getOrCreateSession, updateSession } from '../memory/sessionManager';
 import { fetchEvidenceContext } from './agent-session';
-import { runCompleteAssessment } from '../assessment/completeAssessment';
+import { isAssessmentReadyForCompletion } from '../assessment/completeAssessment';
 import { supabase } from '../db/supabaseClient';
+import { canScoreAdoptionConditions } from '../assessment/adoptionGating';
+import {
+  buildCorrectionEvidenceNote,
+  detectProfileCorrections,
+} from './profileCorrection';
 import { DimensionNames } from '../types';
 
 const profileFields = {
@@ -61,6 +66,7 @@ export const updateSessionProfileTool = tool(
     respondentRole?: string;
     primaryUseCase?: string;
   }) => {
+    const session = await getOrCreateSession(sessionId);
     const updates = {
       respondentName: compactString(respondentName),
       organisation: compactString(organisation),
@@ -73,19 +79,37 @@ export const updateSessionProfileTool = tool(
       Object.entries(updates).filter(([, value]) => value),
     );
 
+    const correctedFields = detectProfileCorrections(session, definedUpdates);
+
     if (Object.keys(definedUpdates).length > 0) {
       await updateSession(sessionId, definedUpdates);
     }
 
-    const session = await getOrCreateSession(sessionId);
+    if (correctedFields.length > 0) {
+      const note = buildCorrectionEvidenceNote(correctedFields, session, definedUpdates);
+      await supabase.from('evidence_records').insert({
+        session_id: sessionId,
+        dimension: 'use_case_specificity',
+        quality: 'STATED',
+        extracted_text: note,
+        agent_interpretation: note,
+        source: 'CONVERSATION',
+        document_name: null,
+      });
+    }
+
+    const updatedSession = await getOrCreateSession(sessionId);
     const missing = Object.entries(PROFILE_LABELS)
-      .filter(([key]) => !session[key as keyof typeof PROFILE_LABELS])
+      .filter(([key]) => !updatedSession[key as keyof typeof PROFILE_LABELS])
       .map(([, label]) => label);
 
     return JSON.stringify({
       status: 'profile_updated',
       captured: definedUpdates,
       missing,
+      correctedFields,
+      preservedScores: correctedFields.length > 0,
+      preservedEvidence: correctedFields.length > 0,
     });
   },
   {
@@ -111,26 +135,52 @@ export const recordDimensionSignalTool = tool(
     evidence: string;
   }) => {
     const session = await getOrCreateSession(sessionId);
+
+    if (dimension === 'adoption_conditions') {
+      const adoptionCheck = canScoreAdoptionConditions(
+        session.topicsCompleted,
+        session.conversationHistory,
+      );
+      if (!adoptionCheck.allowed) {
+        return adoptionCheck.reason ?? 'Adoption evidence required before scoring adoption_conditions.';
+      }
+    }
+
     const scores = { ...(session.dimensionScores || {}), [dimension]: score };
     await updateSession(sessionId, { dimensionScores: scores as any });
 
     const evidenceText = compactString(evidence) ?? 'Conversation evidence recorded by advisor.';
-    await supabase
+
+    const { data: existingRows } = await supabase
       .from('evidence_records')
-      .delete()
+      .select('id')
       .eq('session_id', sessionId)
       .eq('dimension', dimension)
-      .eq('source', 'CONVERSATION');
+      .eq('source', 'CONVERSATION')
+      .limit(1);
 
-    await supabase.from('evidence_records').insert({
-      session_id: sessionId,
-      dimension,
-      quality: 'STATED',
-      extracted_text: evidenceText,
-      agent_interpretation: evidenceText,
-      source: 'CONVERSATION',
-      document_name: null,
-    });
+    const existing = existingRows?.[0];
+
+    if (existing?.id) {
+      await supabase
+        .from('evidence_records')
+        .update({
+          quality: 'STATED',
+          extracted_text: evidenceText,
+          agent_interpretation: evidenceText,
+        })
+        .eq('id', existing.id);
+    } else {
+      await supabase.from('evidence_records').insert({
+        session_id: sessionId,
+        dimension,
+        quality: 'STATED',
+        extracted_text: evidenceText,
+        agent_interpretation: evidenceText,
+        source: 'CONVERSATION',
+        document_name: null,
+      });
+    }
 
     return `Recorded score ${score} for dimension ${dimension}. Evidence: ${evidence}`;
   },
@@ -190,16 +240,21 @@ export const checkTopicCoverageTool = tool(
 
 export const completeAssessmentTool = tool(
   async ({ sessionId }: { sessionId: string }) => {
-    const result = await runCompleteAssessment(sessionId);
+    const session = await getOrCreateSession(sessionId);
+    if (!isAssessmentReadyForCompletion(session)) {
+      return JSON.stringify({
+        status: 'not_ready',
+        message: 'Cover all five topics and record at least five dimension signals before completing.',
+      });
+    }
 
     return JSON.stringify({
-      status: 'assessment_completed',
-      result,
+      status: 'ready_for_report_generation',
     });
   },
   {
     name: 'complete_assessment',
-    description: 'REQUIRED to finish the assessment. Call when all 5 topics are covered with sufficient depth and dimension signals are recorded. Generates the advisory report shown in the right panel and PDF download.',
+    description: 'REQUIRED to finish the assessment interview. Call when all 5 topics are covered with sufficient depth and dimension signals are recorded. This marks the interview complete and triggers advisory document generation in the right panel.',
     schema: z.object({
       sessionId: z.string(),
     }),

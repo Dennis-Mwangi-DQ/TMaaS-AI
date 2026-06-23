@@ -5,9 +5,10 @@ import { createDeepSeekLlm } from '../lib/llmClient';
 import { invokeJson } from '../lib/llmJson';
 import type { AssessmentSession, AssessmentResult, EvidenceRecord } from '../types';
 import { DimensionNames } from '../types';
-import { matchUseCases } from '../usecases/useCaseMatcher';
+import { matchUseCases, primaryUseCaseNeedsValidation } from '../usecases/useCaseMatcher';
 import { saveAssessmentResult } from './assessmentResultStore';
 import { buildSessionEvidence } from './sessionEvidence';
+import { sanitizeAssessmentResult } from './claimSanitizer';
 import { DIMENSION_LABELS, DIMENSION_ORDER } from '../scoring/dimensionLabels';
 
 function computeStrengthAndGap(session: AssessmentSession) {
@@ -91,18 +92,18 @@ const RoadmapOutputSchema = z.object({
     timeline: z.string(),
     action: z.string(),
     owner: z.string(),
-  })).min(1).max(9),
+  })).min(1).max(3),
   risks: z.array(z.object({
     risk: z.string(),
     likelihood: z.string(),
     impact: z.string(),
     mitigation: z.string(),
-  })).min(1).max(4),
+  })).min(1).max(2),
   nextSteps: z.array(z.object({
     label: z.string(),
     timeframe: z.string(),
     action: z.string(),
-  })).min(1).max(4),
+  })).min(1).max(2),
   constraints: z.string(),
   firstAction: z.string(),
 });
@@ -178,6 +179,20 @@ ${schemaDescription}
 Do not use emojis.`;
 }
 
+function mapSummaryBlockersToDetailed(
+  blockers: Array<{ title: string; description: string }>,
+) {
+  return blockers.map((blocker) => ({
+    title: blocker.title,
+    affectedDimensions: ['Multiple dimensions'],
+    severity: 'High',
+    rootCause: blocker.description,
+    businessImpact: blocker.description,
+    resolutionPathway: 'Address during the recommended first 30-day action.',
+    dependencies: 'None identified.',
+  }));
+}
+
 function buildFallbackDimensionAnalyses(
   session: AssessmentSession,
   evidence: EvidenceRecord[],
@@ -218,6 +233,7 @@ async function generateFallbackAssessmentOutput(
   const useCases = matchUseCases(session.sector || 'All', session.readinessLevel!, {
     problemStatement: session.primaryUseCase,
     conversation: ctx.CONVERSATION,
+    evidence,
     maxResults: 2,
   });
   const sessionEvidence = buildSessionEvidence(session, evidence);
@@ -254,15 +270,7 @@ Include no more than 3 blockers.`),
     extendedReport: {
       executiveSummary: computeStrengthAndGap(session),
       dimensionAnalyses: buildFallbackDimensionAnalyses(session, evidence),
-      detailedBlockers: narrativeRes.blockers.map((blocker) => ({
-        title: blocker.title,
-        affectedDimensions: ['Multiple dimensions'],
-        severity: 'High',
-        rootCause: blocker.description,
-        businessImpact: blocker.description,
-        resolutionPathway: 'Address during the recommended first 30-day action.',
-        dependencies: 'None identified.',
-      })),
+      detailedBlockers: mapSummaryBlockersToDetailed(narrativeRes.blockers),
       useCaseDetails: useCases.map((uc) => ({
         rationale: uc.value_statement,
         description: uc.description,
@@ -292,7 +300,7 @@ Include no more than 3 blockers.`),
     },
   };
 
-  return result;
+  return sanitizeAssessmentResult(result, evidence, session);
 }
 
 export async function generateAssessmentOutput(
@@ -309,8 +317,18 @@ export async function generateAssessmentOutput(
   const useCases = matchUseCases(session.sector || 'All', session.readinessLevel, {
     problemStatement: session.primaryUseCase,
     conversation: ctx.CONVERSATION,
+    evidence,
     maxResults: 2,
   });
+  const validationRequired = primaryUseCaseNeedsValidation(
+    session.sector || 'All',
+    session.readinessLevel,
+    {
+      problemStatement: session.primaryUseCase,
+      conversation: ctx.CONVERSATION,
+      evidence,
+    },
+  );
   const sessionEvidence = buildSessionEvidence(session, evidence);
 
   const narrativePrompt = fillPrompt(loadPrompt('blocker_narrative.md'), ctx).concat(
@@ -331,44 +349,12 @@ Include no more than 3 blockers.`),
 
   const narrativeRes = await invokeJson(llm, narrativePrompt, NarrativeOutputSchema);
 
-  const dimensionPrompt = fillPrompt(loadPrompt('dimension_analysis.md'), ctx).concat(
-    jsonInstruction(`{
-  "dimensionAnalyses": [
-    {
-      "dimension": "systems_integration",
-      "evidence": "...",
-      "gaps": "...",
-      "deploymentImpact": "...",
-      "recommendedActions": ["action 1", "action 2"],
-      "confidence": "Low|Medium|High"
-    }
-  ]
-}
-Include one entry per dimension where possible.`),
-  );
-
-  const detailedBlockersPrompt = fillPrompt(
-    loadPrompt('detailed_blockers.md'),
-    {
-      ...ctx,
-      SUMMARY_BLOCKERS: JSON.stringify(narrativeRes.blockers, null, 2),
-    },
-  ).concat(
-    jsonInstruction(`{
-  "detailedBlockers": [
-    {
-      "title": "...",
-      "affectedDimensions": ["Systems Integration"],
-      "severity": "Critical|High|Medium — rationale",
-      "rootCause": "...",
-      "businessImpact": "...",
-      "resolutionPathway": "...",
-      "dependencies": "..."
-    }
-  ]
-}
-Include no more than 3 blockers.`),
-  );
+  const dimensionRes = {
+    dimensionAnalyses: buildFallbackDimensionAnalyses(session, evidence),
+  };
+  const detailedBlockersRes = {
+    detailedBlockers: mapSummaryBlockersToDetailed(narrativeRes.blockers),
+  };
 
   const useCasePrompt = fillPrompt(
     loadPrompt('use_case_details.md'),
@@ -382,7 +368,7 @@ Include no more than 3 blockers.`),
           dq_notes: uc.dq_notes,
           min_readiness_level: uc.min_readiness_level,
           complexity: uc.implementation_complexity,
-          indicative_cost_band: uc.cost_band_indicative,
+          hasIndicativeCostBand: Boolean(uc.cost_band_indicative),
         })),
         null,
         2,
@@ -406,41 +392,21 @@ Include no more than 3 blockers.`),
 One entry per use case, same order as input.`),
   );
 
-  const [dimensionRes, detailedBlockersRes, useCaseRes] = await Promise.all([
-    invokeJson(llm, dimensionPrompt, DimensionAnalysisOutputSchema).catch((error) => {
-      console.warn('Dimension analysis generation failed:', error);
-      return { dimensionAnalyses: buildFallbackDimensionAnalyses(session, evidence) };
-    }),
-    invokeJson(llm, detailedBlockersPrompt, DetailedBlockersOutputSchema).catch((error) => {
-      console.warn('Detailed blockers generation failed:', error);
-      return {
-        detailedBlockers: narrativeRes.blockers.map((blocker) => ({
-          title: blocker.title,
-          affectedDimensions: ['Multiple dimensions'],
-          severity: 'High',
-          rootCause: blocker.description,
-          businessImpact: blocker.description,
-          resolutionPathway: 'Address during the recommended first 30-day action.',
-          dependencies: 'None identified.',
-        })),
-      };
-    }),
-    invokeJson(llm, useCasePrompt, UseCaseDetailsOutputSchema).catch((error) => {
-      console.warn('Use case detail generation failed:', error);
-      return {
-        useCaseDetails: useCases.map((uc) => ({
-          rationale: uc.value_statement,
-          description: uc.description,
-          businessRationale: uc.value_statement,
-          dataRequirements: uc.prerequisite,
-          integrationPoints: 'To be confirmed during scoping.',
-          keyRisks: ['Delivery risk until foundational gaps are addressed.'],
-          sequencing: 'After immediate stabilisation actions.',
-          vendorNote: 'Evaluate build vs buy during pilot scoping.',
-        })),
-      };
-    }),
-  ]);
+  const useCaseRes = await invokeJson(llm, useCasePrompt, UseCaseDetailsOutputSchema).catch((error) => {
+    console.warn('Use case detail generation failed:', error);
+    return {
+      useCaseDetails: useCases.map((uc) => ({
+        rationale: uc.value_statement,
+        description: uc.description,
+        businessRationale: uc.value_statement,
+        dataRequirements: uc.prerequisite,
+        integrationPoints: 'To be confirmed during scoping.',
+        keyRisks: ['Delivery risk until foundational gaps are addressed.'],
+        sequencing: 'After immediate stabilisation actions.',
+        vendorNote: 'Evaluate build vs buy during pilot scoping.',
+      })),
+    };
+  });
 
   const roadmapPrompt = fillPrompt(
     loadPrompt('roadmap_and_risks.md'),
@@ -504,15 +470,18 @@ Provide as many roadmap and next-step items as evidence supports.`),
     blockers: narrativeRes.blockers,
     useCases: useCases.map((uc, i) => ({
       useCase: uc,
-      rationale: useCaseRes.useCaseDetails[i]?.rationale || uc.value_statement,
+      rationale: validationRequired && i === 0
+        ? `${useCaseRes.useCaseDetails[i]?.rationale || uc.value_statement} (Validation required before this use case is confirmed viable.)`
+        : useCaseRes.useCaseDetails[i]?.rationale || uc.value_statement,
       details: useCaseRes.useCaseDetails[i],
     })),
     firstAction: roadmapRes.firstAction,
     extendedReport,
   };
 
-  await saveAssessmentResult(session.sessionId, result);
-  return result;
+  const sanitized = sanitizeAssessmentResult(result, evidence, session);
+  await saveAssessmentResult(session.sessionId, sanitized);
+  return sanitized;
 }
 
 export async function generateAssessmentOutputWithFallback(
